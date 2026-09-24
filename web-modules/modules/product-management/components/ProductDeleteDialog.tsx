@@ -51,7 +51,7 @@ export function ProductDeleteDialog({ payload, close }: ProductDeleteDialogProps
           <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             disabled={deleteProduct.isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive-strong"
             onClick={handleConfirm}
           >
             {t('actions.delete')}
