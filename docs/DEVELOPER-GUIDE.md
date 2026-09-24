@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -740,6 +740,20 @@ ESLint sudah menegakkan sebagian besar aturan ini (`no-restricted-imports` per r
 | — | Override modal module dari extension |
 | — | Override service core |
 
+### 5.4 Styling & Theme
+
+Brand: **ARSI Purple `#551AB9`**. Tabel token lengkap + aturan pakai: `CONTRACT.md` §10.4.
+
+| Aturan | Detail |
+| --- | --- |
+| Warna | **Wajib token** (`bg-primary`, `text-success-strong`, dst). Dilarang hex mentah / warna Tailwind palette langsung di komponen. |
+| Hover/selected | Pakai token brand: `hover:bg-primary-hover` (tombol), `bg-accent` (hover/selected surface, row tabel). |
+| Status | Badge pola tint: `bg-success/10 text-success-strong border-success/20` (idem `warning`/`info`/`destructive`). Teks semantik pakai varian `-strong` agar kontras AA di light & dark. |
+| Dark mode | Jangan pakai utility `dark:` di source. Semua lewat token yang flip otomatis (`web-container/src/styles/globals.css`). |
+| Font | Plus Jakarta Sans self-host (`@fontsource-variable/plus-jakarta-sans`, di-import dari `globals.css`); jangan tambah `<link>` Google Fonts. |
+| Ganti/tambah token | Hanya di `globals.css` (nilai) + `tailwind.preset.cjs` (mapping); test `web-container/src/styles/tokens.test.ts` wajib lulus. |
+| Container | **Self-contained**: container tidak boleh import `@arsi/shared` (di-enforce ESLint `no-restricted-imports`). Shell memakai utility token langsung; komponen shared (`Card`, `Button`, dst) hanya untuk module/extension. |
+
 ---
 
 ## 6. Testing Playbook
@@ -801,6 +815,10 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 | --- | --- |
 | Build error `ENOTDIR .../public.ts/entry` | Alias `/entry` tertulis **setelah** alias base di `aliases.cjs`. Pindahkan `/entry` ke atas. |
 | Warning Tailwind "matching all of node_modules" | Ada `node_modules` nested di `web-modules/modules/*` (npm menaruh sebagian deps di sana). Pastikan `tailwind.config.cjs` container memuat negasi `'!../web-modules/modules/**/node_modules/**'`. |
+| Warna tidak berubah saat ganti tema | Ada hex mentah atau utility `dark:` di komponen. Ganti dengan token (`bg-card`, `text-muted-foreground`, dst) — lihat §5.4. |
+| Test palet/kontras gagal | `cd web-container && npm test -- src/styles/tokens.test.ts`. Update nilai di `globals.css` + mapping di `tailwind.preset.cjs`; jangan longgarkan test. |
+| ESLint "Container must stay self-contained" | `web-container` import `@arsi/shared`. Container wajib self-contained; komponen shared hanya untuk module/extension. |
+| Font masih system font | Import `@fontsource-variable/plus-jakarta-sans` di `globals.css` terhapus atau `fontFamily.sans` preset berubah. Jalankan `tokens.test.ts`. |
 | `[apiRegistry] service "x" is not registered` | Service diregistrasi di `init` module yang belum jalan, atau salah nama. Cek urutan di `config.json` dan nama di `register`/`get`. |
 | `[routes] cannot override unknown route` | Extension override path yang belum diregistrasi module. Cek path persisnya (`/users/:id`). |
 | `[slots] slot "x" already has a component` | Slot diisi dua kali (atau `init` jalan dua kali tanpa guard). Pastikan guard `initialized` dan hanya satu extension mengisi. |
@@ -826,6 +844,7 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 - [ ] Slot/modal/event/route di-namespace; route path unik + `meta.module`.
 - [ ] Semua teks UI pakai i18n (en + id), namespace `<module>`.
 - [ ] UI memakai komponen `@arsi/shared`; tidak import `components/ui/...`.
+- [ ] Styling memakai token (§5.4): tanpa hex mentah / utility `dark:`; kontras mengikuti CONTRACT §10.4.
 - [ ] Store memakai persist key `module:<name>`; devtools via `isDev`.
 - [ ] `public.ts` diperbarui; alias/tsconfig/discover/config.json ter-wiring.
 - [ ] Test ditambahkan (service, query keys, store, public API, komponen).
@@ -837,6 +856,7 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 - [ ] Import module hanya dari `@arsi/module-<name>` (public API).
 - [ ] Tidak override service core; service baru bernama `<client>.<service>`.
 - [ ] Slot/route/modal/i18n override sesuai kesepakatan; tidak mengisi slot yang tidak dideklarasikan.
+- [ ] Styling override memakai token (§5.4); tanpa hex mentah / utility `dark:`.
 - [ ] Tidak listen event extension lain; tidak membuat module listen event extension.
 - [ ] `manifest.json` diperbarui (client, modules, overrides).
 - [ ] Test override ditambahkan; `typecheck`, `test`, `lint` lulus.
@@ -850,6 +870,8 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 - `ARCHITECTURE.md` §19 — Development Workflow (setup, tambah module/client).
 - `CONTRACT.md` §20 — Review Checklist resmi.
 - `CONTRACT.md` §15 — Naming conventions.
+- `CONTRACT.md` §10.4 — Brand token ARSI Purple & aturan styling.
+- `CONTRACT.md` §9.4 — Aturan import UI kit (termasuk container self-contained).
 
 ### 9.2 Peta contoh di kode
 
@@ -895,5 +917,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.1.0
-**Last updated**: 2026-09-24
+**Document version**: 0.2.0
+**Last updated**: 2026-09-25
