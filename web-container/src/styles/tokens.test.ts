@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
+const indexHtml = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
 const require = createRequire(import.meta.url);
 const preset = require('../../../web-modules/shared/tailwind.preset.cjs');
 
@@ -194,5 +195,17 @@ describe('token wiring', () => {
     expect(preset.theme.extend.colors.destructive.strong).toBe('hsl(var(--destructive-strong))');
     expect(preset.theme.extend.boxShadow.soft).toBeTruthy();
     expect(preset.theme.extend.boxShadow['soft-lg']).toBeTruthy();
+  });
+});
+
+describe('typography & bootstrap', () => {
+  it('loads the self-hosted variable font', () => {
+    expect(css).toContain("@import '@fontsource-variable/plus-jakarta-sans';");
+    expect(preset.theme.extend.fontFamily.sans[0]).toContain('Plus Jakarta Sans');
+  });
+
+  it('sets theme-color and pre-hydration dark class', () => {
+    expect(indexHtml).toContain('name="theme-color"');
+    expect(indexHtml).toContain('container:theme');
   });
 });
