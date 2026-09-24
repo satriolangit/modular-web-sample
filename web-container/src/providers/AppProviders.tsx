@@ -31,12 +31,14 @@ function AppEffects() {
 }
 
 export function AppProviders({ deps, children }: { deps: Deps; children: ReactNode }) {
+  const theme = useThemeStore((state) => state.theme);
+
   return (
     <DepsProvider deps={deps}>
       <QueryClientProvider client={deps.queryClient}>
         <I18nextProvider i18n={deps.i18n}>
           <AppEffects />
-          <Toaster position="top-right" richColors closeButton />
+          <Toaster position="top-right" richColors closeButton theme={theme} />
           {children}
         </I18nextProvider>
       </QueryClientProvider>
