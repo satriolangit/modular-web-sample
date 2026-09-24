@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from '@arsi/container';
-import { ErrorState, PageHeader, Skeleton } from '@arsi/shared';
+import { Card, ErrorState, PageHeader, Skeleton } from '@arsi/shared';
 
 import { ProductForm } from '../components/ProductForm';
 import { useProduct, useProductCategories, useUpdateProduct } from '../hooks/useProduct';
@@ -49,7 +49,7 @@ export function ProductEditPage() {
         />
       ) : null}
       {initialValues ? (
-        <div className="rounded-lg border bg-card p-6">
+        <Card className="p-6">
           <ProductForm
             mode="edit"
             initialValues={initialValues}
@@ -63,7 +63,7 @@ export function ProductEditPage() {
               );
             }}
           />
-        </div>
+        </Card>
       ) : null}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useTranslation } from '@arsi/container';
-import { Badge } from '@arsi/shared';
+import { Badge, Card } from '@arsi/shared';
 
 import type { User } from '../types';
 
@@ -19,7 +19,7 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
   ];
 
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">{`${user.firstName} ${user.lastName}`}</h2>
         <Badge variant="secondary">{user.role ?? t('columns.roleUnknown')}</Badge>
@@ -32,6 +32,6 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
           </div>
         ))}
       </dl>
-    </div>
+    </Card>
   );
 }

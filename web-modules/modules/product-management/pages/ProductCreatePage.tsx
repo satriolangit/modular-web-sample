@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@arsi/container';
-import { PageHeader } from '@arsi/shared';
+import { Card, PageHeader } from '@arsi/shared';
 
 import { ProductForm } from '../components/ProductForm';
 import { useCreateProduct, useProductCategories } from '../hooks/useProduct';
@@ -14,7 +14,7 @@ export function ProductCreatePage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader title={t('form.createTitle')} description={t('form.createDescription')} />
-      <div className="rounded-lg border bg-card p-6">
+      <Card className="p-6">
         <ProductForm
           mode="create"
           categories={categories ?? []}
@@ -26,7 +26,7 @@ export function ProductCreatePage() {
             });
           }}
         />
-      </div>
+      </Card>
     </div>
   );
 }

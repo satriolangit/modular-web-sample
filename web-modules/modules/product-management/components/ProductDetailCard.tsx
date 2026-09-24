@@ -1,5 +1,5 @@
 import { useLocale, useTranslation } from '@arsi/container';
-import { Badge, Rating } from '@arsi/shared';
+import { Badge, Card, Rating } from '@arsi/shared';
 
 import { formatPrice } from '../lib/format';
 import type { Product } from '../types';
@@ -31,7 +31,7 @@ export function ProductDetailCard({ product }: ProductDetailCardProps) {
   ];
 
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <Card className="p-6">
       <div className="grid gap-6 md:grid-cols-[240px_1fr]">
         <div className="space-y-3">
           <img
@@ -98,6 +98,6 @@ export function ProductDetailCard({ product }: ProductDetailCardProps) {
           ) : null}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
