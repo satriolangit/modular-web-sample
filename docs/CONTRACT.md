@@ -741,6 +741,7 @@ Komponen otomatis masuk ke `components/ui/`.
 - Modul **tidak boleh** import shadcn-ui langsung dari `components/ui/...`.
 - Extension **wajib** pakai komponen dari `@arsi/shared`.
 - Kalau butuh komponen baru, **tambahkan ke shared**, bukan buat di modul.
+- Container **tidak boleh** import `@arsi/shared` — container self-contained (di-enforce ESLint `no-restricted-imports`). Styling shell container memakai utility token langsung.
 
 **Pengecualian:** komponen yang sangat spesifik modul (misal `UserTable`) boleh di modul.
 
@@ -772,6 +773,32 @@ content: [
 - Modul **tidak boleh** define Tailwind config sendiri.
 - Extension **tidak boleh** define Tailwind config sendiri.
 - Kalau butuh utility baru, tambahkan ke preset shared.
+
+### 10.4 Brand Token — ARSI Purple
+
+Brand color: **`#551AB9`** (deep/royal purple). Nilai token hanya boleh diubah di `globals.css`.
+
+| Peran                           | Light     | Dark      |
+| ------------------------------- | --------- | --------- |
+| Primary (aksi/aktif/fokus)      | `#551AB9` | `#A78BFA` |
+| Primary hover                   | `#3D0F8A` | `#B9A5FC` |
+| Primary light (aksen)           | `#8B5CF6` | `#A78BFA` |
+| Accent (hover/selected surface) | `#F3EEFC` | `#2A2340` |
+| Background                      | `#F8F9FB` | `#13111C` |
+| Surface (card/popover)          | `#FFFFFF` | `#1E1B2E` |
+| Border                          | `#E5E7EB` | `#2D2A3D` |
+| Text primary / secondary        | `#1F2937` / `#6B7280` | `#F3F4F6` / `#9CA3AF` |
+| Success / Warning / Info / Danger | `#16A34A` / `#F59E0B` / `#0EA5E9` / `#DC2626` | idem |
+
+Aturan pakai:
+
+- Token semantik punya varian `-strong` (`text-success-strong`, dst): lebih gelap di light, lebih terang di dark — utility class sama, otomatis benar di dua tema.
+- Badge status memakai pola tint: `bg-success/10 text-success-strong border-success/20`.
+- Hindari `text-muted-foreground` di atas `bg-muted` (kontras marginal 4.39:1).
+- Focus visible: `ring-2 ring-ring ring-offset-2 ring-offset-background`.
+- Jangan pakai utility `dark:` di app source — tema hanya lewat token yang flip.
+- Font: Plus Jakarta Sans (self-host `@fontsource-variable/plus-jakarta-sans`, di-import dari `globals.css`).
+- Kontras & palet dijaga test `web-container/src/styles/tokens.test.ts` (palet ±1 channel + 21 pasangan WCAG).
 
 ---
 
@@ -1100,11 +1127,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.1.0
-**Last updated**: 2026-09-24
+**Document version**: 0.2.0
+**Last updated**: 2026-09-25
 
 **Changelog:**
 
+- **0.2.0** — Brand token ARSI Purple (`#551AB9`) untuk light+dark, token semantik (`success`/`warning`/`info` + varian `-strong`), font Plus Jakarta Sans self-hosted, komponen `Card` di shared, dan aturan container self-contained (tanpa import `@arsi/shared`) di §9.4/§10.4.
 - **0.1.0** — Initial contract. Mencakup 20 section: layer rules, access patterns, state management (Zustand), service registry, data fetching (Axios + React Query), i18n, toast, modal, UI kit, Tailwind, slots, routes, events, configuration, naming conventions, versioning, testing, observability, governance, dan review checklist.
 
 ---

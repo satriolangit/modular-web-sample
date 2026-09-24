@@ -704,11 +704,13 @@ const user = await apiRegistry.get("user").get("/users/1");
 - Composite components: `shared/components/composite/`
 - Public API: `shared/index.ts`
 
-### 11.2 Tailwind
+### 11.2 Tailwind & Brand Token
 
 - Preset: `web-modules/shared/tailwind.preset.cjs`
 - Config: `web-container/tailwind.config.cjs` extends preset
 - CSS variables: `web-container/src/styles/globals.css`
+- Brand token ARSI Purple (`#551AB9`) + token semantik + aturan pakai: lihat CONTRACT §10.4.
+- Komponen `Card` tersedia di `shared/components/ui/card.tsx` untuk modul/extension. Container tetap self-contained (tidak import `@arsi/shared`).
 
 ### 11.3 Tambah Komponen Baru
 
