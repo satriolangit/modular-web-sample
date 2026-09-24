@@ -1,0 +1,123 @@
+{
+  "title": "Products",
+  "menu": {
+    "products": "Products"
+  },
+  "list": {
+    "description": "Manage the product catalog.",
+    "errorTitle": "Failed to load products",
+    "errorDescription": "Something went wrong while fetching the product list."
+  },
+  "columns": {
+    "product": "Product",
+    "category": "Category",
+    "price": "Price",
+    "stock": "Stock",
+    "rating": "Rating",
+    "actions": "Actions"
+  },
+  "stock": {
+    "inStock": "{{count}} in stock",
+    "outOfStock": "Out of stock"
+  },
+  "actions": {
+    "create": "Create product",
+    "view": "View",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "back": "Back to list",
+    "retry": "Try again"
+  },
+  "search": {
+    "placeholder": "Search products..."
+  },
+  "filters": {
+    "category": "Category",
+    "allCategories": "All categories",
+    "sort": "Sort by",
+    "reset": "Reset filters"
+  },
+  "sort": {
+    "default": "Default",
+    "titleAsc": "Title A-Z",
+    "priceAsc": "Price: low to high",
+    "priceDesc": "Price: high to low",
+    "ratingDesc": "Rating: high to low"
+  },
+  "empty": "No products found",
+  "pagination": {
+    "summary": "{{total}} products",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {{page}} of {{totalPages}}"
+  },
+  "form": {
+    "createTitle": "Create product",
+    "createDescription": "Add a new product to the catalog.",
+    "editTitle": "Edit product",
+    "editDescription": "Update product information.",
+    "fields": {
+      "title": "Title",
+      "description": "Description",
+      "category": "Category",
+      "brand": "Brand",
+      "price": "Price",
+      "stock": "Stock"
+    },
+    "placeholders": {
+      "title": "e.g. Wireless Headphones",
+      "description": "Describe the product...",
+      "category": "Select a category",
+      "brand": "e.g. Acme",
+      "price": "0.00",
+      "stock": "0"
+    },
+    "errors": {
+      "titleMin": "Title must be at least 3 characters",
+      "titleMax": "Title must be at most 100 characters",
+      "descriptionMin": "Description must be at least 10 characters",
+      "descriptionMax": "Description must be at most 1000 characters",
+      "categoryRequired": "Category is required",
+      "brandMax": "Brand must be at most 50 characters",
+      "priceRequired": "Price is required",
+      "pricePositive": "Price must be greater than 0",
+      "priceMax": "Price is too large",
+      "stockRequired": "Stock is required",
+      "stockInteger": "Stock must be a whole number of 0 or more"
+    }
+  },
+  "detail": {
+    "errorTitle": "Failed to load product",
+    "errorDescription": "The product may have been removed or does not exist.",
+    "sidebarTitle": "Client extensions",
+    "sidebarEmpty": "No client extension attached.",
+    "fields": {
+      "brand": "Brand",
+      "sku": "SKU",
+      "category": "Category",
+      "stock": "Stock",
+      "availability": "Availability",
+      "weight": "Weight",
+      "warranty": "Warranty",
+      "shipping": "Shipping",
+      "returnPolicy": "Return policy",
+      "minOrder": "Minimum order"
+    }
+  },
+  "create": {
+    "success": "Product created",
+    "error": "Failed to create product"
+  },
+  "update": {
+    "success": "Product updated",
+    "error": "Failed to update product"
+  },
+  "delete": {
+    "title": "Delete product",
+    "description": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
+    "success": "Product deleted",
+    "error": "Failed to delete product"
+  }
+}

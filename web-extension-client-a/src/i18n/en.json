@@ -1,0 +1,11 @@
+{
+  "audit": {
+    "action": "Audit",
+    "requested": "Audit request sent"
+  },
+  "detail": {
+    "title": "Client A user detail",
+    "description": "This page is rendered by the client-a route override."
+  },
+  "badge": "Extended by client-a"
+}

@@ -1,0 +1,7 @@
+{
+  "client": "client-x",
+  "baseVersion": "0.1.0",
+  "modules": {},
+  "shared": "^0.1.0",
+  "overrides": []
+}

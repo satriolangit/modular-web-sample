@@ -1,0 +1,40 @@
+{
+  "app": {
+    "title": "ARSI Platform",
+    "client": "Klien",
+    "modules": "Modul aktif"
+  },
+  "nav": {
+    "home": "Beranda"
+  },
+  "actions": {
+    "cancel": "Batal",
+    "save": "Simpan",
+    "close": "Tutup",
+    "signOut": "Keluar",
+    "toggleTheme": "Ganti tema",
+    "reload": "Muat ulang"
+  },
+  "home": {
+    "title": "Selamat datang",
+    "description": "Shell platform modular berjalan dengan baik."
+  },
+  "notFound": {
+    "title": "Halaman tidak ditemukan",
+    "description": "Halaman yang Anda cari tidak tersedia.",
+    "backHome": "Kembali ke beranda"
+  },
+  "routeError": {
+    "title": "Terjadi kesalahan",
+    "description": "Kesalahan tak terduga terjadi saat merender halaman ini."
+  },
+  "locale": {
+    "label": "Bahasa",
+    "en": "English",
+    "id": "Bahasa Indonesia"
+  },
+  "theme": {
+    "light": "Terang",
+    "dark": "Gelap"
+  }
+}

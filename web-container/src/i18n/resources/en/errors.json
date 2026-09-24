@@ -1,0 +1,5 @@
+{
+  "generic": "Something went wrong",
+  "network": "Network error. Please try again.",
+  "unauthorized": "Your session has expired."
+}

@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+current-client
+.env
+.env.*
+.DS_Store
+*.local

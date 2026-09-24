@@ -1,0 +1,40 @@
+{
+  "app": {
+    "title": "ARSI Platform",
+    "client": "Client",
+    "modules": "Loaded modules"
+  },
+  "nav": {
+    "home": "Home"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "signOut": "Sign out",
+    "toggleTheme": "Toggle theme",
+    "reload": "Reload page"
+  },
+  "home": {
+    "title": "Welcome",
+    "description": "The modular platform shell is up and running."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist.",
+    "backHome": "Back to home"
+  },
+  "routeError": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred while rendering this page."
+  },
+  "locale": {
+    "label": "Language",
+    "en": "English",
+    "id": "Bahasa Indonesia"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark"
+  }
+}

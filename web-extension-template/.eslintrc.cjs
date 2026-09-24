@@ -1,0 +1,72 @@
+module.exports = {
+  root: true,
+  env: { browser: true, es2022: true, node: true },
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    project: './tsconfig.json',
+  },
+  plugins: ['@typescript-eslint', 'import'],
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:import/recommended',
+    'plugin:import/typescript',
+  ],
+  settings: {
+    'import/resolver': {
+      typescript: { project: './tsconfig.json' },
+    },
+  },
+  ignorePatterns: ['node_modules', 'dist', 'coverage', '*.cjs'],
+  rules: {
+    'import/no-unresolved': 'off',
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: ['@arsi/module-*/entry', '@arsi/module-*/*'],
+            message: 'Extensions must import modules only from their public API.',
+          },
+          {
+            group: ['@arsi/extension'],
+            message: 'Extensions must not import other extensions.',
+          },
+          {
+            group: ['sonner', 'i18next', 'react-i18next', '@tanstack/react-query'],
+            message: 'Use the container hooks (@arsi/container) instead of direct library imports.',
+          },
+        ],
+      },
+    ],
+  },
+  overrides: [
+    {
+      files: ['src/index.tsx'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['@arsi/module-*/entry', '@arsi/module-*/*'],
+                message: 'Extensions must import modules only from their public API.',
+              },
+              {
+                group: ['@arsi/extension'],
+                message: 'Extensions must not import other extensions.',
+              },
+              {
+                group: ['sonner', 'i18next', 'react-i18next', '@tanstack/react-query'],
+                message:
+                  'Use the container hooks (@arsi/container) instead of direct library imports.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+};

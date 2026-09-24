@@ -1,0 +1,60 @@
+{
+  "title": "Users",
+  "menu": {
+    "users": "Users"
+  },
+  "list": {
+    "description": "Browse and manage user accounts.",
+    "error": "Failed to load users."
+  },
+  "columns": {
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "roleUnknown": "Unknown",
+    "actions": "Actions"
+  },
+  "fields": {
+    "firstName": "First name",
+    "lastName": "Last name",
+    "email": "Email",
+    "age": "Age",
+    "role": "Role"
+  },
+  "actions": {
+    "create": "Create user",
+    "view": "View",
+    "cancel": "Cancel",
+    "save": "Save",
+    "back": "Back to list"
+  },
+  "search": {
+    "placeholder": "Search users..."
+  },
+  "empty": "No users found",
+  "pagination": {
+    "summary": "{{total}} users",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {{page}} of {{totalPages}}"
+  },
+  "create": {
+    "title": "Create user",
+    "description": "Add a new user to the directory.",
+    "success": "User created",
+    "error": "Failed to create user"
+  },
+  "update": {
+    "success": "User updated",
+    "error": "Failed to update user"
+  },
+  "delete": {
+    "success": "User deleted",
+    "error": "Failed to delete user"
+  },
+  "detail": {
+    "error": "Failed to load user.",
+    "sidebarTitle": "Client extensions",
+    "sidebarEmpty": "No client extension attached."
+  }
+}

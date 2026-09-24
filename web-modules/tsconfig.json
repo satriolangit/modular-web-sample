@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@arsi/shared": ["./shared/index.ts"],
+      "@arsi/container": ["../web-container/src/public/index.ts"],
+      "@arsi/module-user-management": ["./modules/user-management/public.ts"],
+      "@arsi/module-user-management/entry": ["./modules/user-management/index.tsx"],
+      "@arsi/module-product-management": ["./modules/product-management/public.ts"],
+      "@arsi/module-product-management/entry": ["./modules/product-management/index.tsx"]
+    }
+  },
+  "include": ["shared", "modules", "vitest.config.ts", "vitest.setup.ts"]
+}

@@ -1,0 +1,8 @@
+{
+  "client": "client-a",
+  "modules": ["user-management", "product-management"],
+  "apiBase": "https://dummyjson.com",
+  "featureFlags": {
+    "enableAuditLive": true
+  }
+}

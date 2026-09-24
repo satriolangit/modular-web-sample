@@ -1,0 +1,123 @@
+{
+  "title": "Produk",
+  "menu": {
+    "products": "Produk"
+  },
+  "list": {
+    "description": "Kelola katalog produk.",
+    "errorTitle": "Gagal memuat produk",
+    "errorDescription": "Terjadi kesalahan saat mengambil daftar produk."
+  },
+  "columns": {
+    "product": "Produk",
+    "category": "Kategori",
+    "price": "Harga",
+    "stock": "Stok",
+    "rating": "Rating",
+    "actions": "Aksi"
+  },
+  "stock": {
+    "inStock": "Stok {{count}}",
+    "outOfStock": "Stok habis"
+  },
+  "actions": {
+    "create": "Tambah produk",
+    "view": "Lihat",
+    "edit": "Ubah",
+    "delete": "Hapus",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "back": "Kembali ke daftar",
+    "retry": "Coba lagi"
+  },
+  "search": {
+    "placeholder": "Cari produk..."
+  },
+  "filters": {
+    "category": "Kategori",
+    "allCategories": "Semua kategori",
+    "sort": "Urutkan",
+    "reset": "Reset filter"
+  },
+  "sort": {
+    "default": "Default",
+    "titleAsc": "Judul A-Z",
+    "priceAsc": "Harga: rendah ke tinggi",
+    "priceDesc": "Harga: tinggi ke rendah",
+    "ratingDesc": "Rating: tinggi ke rendah"
+  },
+  "empty": "Tidak ada produk",
+  "pagination": {
+    "summary": "{{total}} produk",
+    "previous": "Sebelumnya",
+    "next": "Berikutnya",
+    "page": "Halaman {{page}} dari {{totalPages}}"
+  },
+  "form": {
+    "createTitle": "Tambah produk",
+    "createDescription": "Tambahkan produk baru ke katalog.",
+    "editTitle": "Ubah produk",
+    "editDescription": "Perbarui informasi produk.",
+    "fields": {
+      "title": "Judul",
+      "description": "Deskripsi",
+      "category": "Kategori",
+      "brand": "Merek",
+      "price": "Harga",
+      "stock": "Stok"
+    },
+    "placeholders": {
+      "title": "cth. Headphone Nirkabel",
+      "description": "Jelaskan produk...",
+      "category": "Pilih kategori",
+      "brand": "cth. Acme",
+      "price": "0.00",
+      "stock": "0"
+    },
+    "errors": {
+      "titleMin": "Judul minimal 3 karakter",
+      "titleMax": "Judul maksimal 100 karakter",
+      "descriptionMin": "Deskripsi minimal 10 karakter",
+      "descriptionMax": "Deskripsi maksimal 1000 karakter",
+      "categoryRequired": "Kategori wajib diisi",
+      "brandMax": "Merek maksimal 50 karakter",
+      "priceRequired": "Harga wajib diisi",
+      "pricePositive": "Harga harus lebih dari 0",
+      "priceMax": "Harga terlalu besar",
+      "stockRequired": "Stok wajib diisi",
+      "stockInteger": "Stok harus bilangan bulat 0 atau lebih"
+    }
+  },
+  "detail": {
+    "errorTitle": "Gagal memuat produk",
+    "errorDescription": "Produk mungkin sudah dihapus atau tidak ada.",
+    "sidebarTitle": "Ekstensi klien",
+    "sidebarEmpty": "Belum ada ekstensi klien.",
+    "fields": {
+      "brand": "Merek",
+      "sku": "SKU",
+      "category": "Kategori",
+      "stock": "Stok",
+      "availability": "Ketersediaan",
+      "weight": "Berat",
+      "warranty": "Garansi",
+      "shipping": "Pengiriman",
+      "returnPolicy": "Kebijakan pengembalian",
+      "minOrder": "Minimum pesanan"
+    }
+  },
+  "create": {
+    "success": "Produk dibuat",
+    "error": "Gagal membuat produk"
+  },
+  "update": {
+    "success": "Produk diperbarui",
+    "error": "Gagal memperbarui produk"
+  },
+  "delete": {
+    "title": "Hapus produk",
+    "description": "Yakin ingin menghapus \"{{title}}\"? Tindakan ini tidak dapat dibatalkan.",
+    "success": "Produk dihapus",
+    "error": "Gagal menghapus produk"
+  }
+}

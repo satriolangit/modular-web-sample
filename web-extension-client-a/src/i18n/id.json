@@ -1,0 +1,11 @@
+{
+  "audit": {
+    "action": "Audit",
+    "requested": "Permintaan audit terkirim"
+  },
+  "detail": {
+    "title": "Detail pengguna Client A",
+    "description": "Halaman ini dirender oleh route override client-a."
+  },
+  "badge": "Diperluas oleh client-a"
+}

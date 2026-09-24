@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+coverage/
+
+# local env & editor
+.env
+.env.*
+*.local
+.DS_Store
+
+# AI tooling (opencode / claude / skills)
+.agents/
+.claude/
+.opencode/
+.codex/
+.gemini/
+.cursor/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+skills-lock.json
+docs/superpowers/

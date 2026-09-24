@@ -1,0 +1,60 @@
+{
+  "title": "Pengguna",
+  "menu": {
+    "users": "Pengguna"
+  },
+  "list": {
+    "description": "Lihat dan kelola akun pengguna.",
+    "error": "Gagal memuat pengguna."
+  },
+  "columns": {
+    "name": "Nama",
+    "email": "Email",
+    "role": "Peran",
+    "roleUnknown": "Tidak diketahui",
+    "actions": "Aksi"
+  },
+  "fields": {
+    "firstName": "Nama depan",
+    "lastName": "Nama belakang",
+    "email": "Email",
+    "age": "Usia",
+    "role": "Peran"
+  },
+  "actions": {
+    "create": "Tambah pengguna",
+    "view": "Lihat",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "back": "Kembali ke daftar"
+  },
+  "search": {
+    "placeholder": "Cari pengguna..."
+  },
+  "empty": "Tidak ada pengguna",
+  "pagination": {
+    "summary": "{{total}} pengguna",
+    "previous": "Sebelumnya",
+    "next": "Berikutnya",
+    "page": "Halaman {{page}} dari {{totalPages}}"
+  },
+  "create": {
+    "title": "Tambah pengguna",
+    "description": "Tambahkan pengguna baru ke direktori.",
+    "success": "Pengguna dibuat",
+    "error": "Gagal membuat pengguna"
+  },
+  "update": {
+    "success": "Pengguna diperbarui",
+    "error": "Gagal memperbarui pengguna"
+  },
+  "delete": {
+    "success": "Pengguna dihapus",
+    "error": "Gagal menghapus pengguna"
+  },
+  "detail": {
+    "error": "Gagal memuat pengguna.",
+    "sidebarTitle": "Ekstensi klien",
+    "sidebarEmpty": "Belum ada ekstensi klien."
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "client": "client-a",
+  "baseVersion": "0.1.0",
+  "modules": {
+    "user-management": "^0.1.0",
+    "product-management": "^0.1.0"
+  },
+  "shared": "^0.1.0",
+  "overrides": ["user-management"]
+}
