@@ -18,6 +18,8 @@ export default defineConfig({
       'react-dom',
       'react/jsx-runtime',
       'react/jsx-dev-runtime',
+      'react-router',
+      'react-router-dom',
       'zustand',
       '@tanstack/react-query',
       'i18next',

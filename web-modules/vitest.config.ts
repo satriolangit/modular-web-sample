@@ -7,7 +7,14 @@ const aliases = require('./aliases.cjs') as Record<string, string>;
 export default defineConfig({
   resolve: {
     alias: aliases,
-    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    dedupe: [
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'react-router',
+      'react-router-dom',
+    ],
   },
   test: {
     environment: 'jsdom',
