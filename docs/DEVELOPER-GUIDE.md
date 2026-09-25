@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.3.0
+**Version**: 0.4.0
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -471,6 +471,7 @@ Aturan `init`:
 - Untuk backend nyata, baseURL service **wajib** path-based `/api/<service>` (CONTRACT §4.5). Pilot DummyJSON memakai `deps.config.apiBase` (runtime config, tanpa domain hardcode).
 - Modal: `deps.modal.register('<module>.<action>', Component)` — komponen menerima `{ payload, close }` dan merender Dialog sendiri (lihat `ProductDeleteDialog`).
 - Notifikasi non-React: `deps.notifications.push({ title, message?, variant?, source })` — mis. dari event listener atau integrasi backend; `source` = `<module>`/`<client>`. Contoh: `web-extension-client-a/src/components/AuditButton.tsx`.
+- Event dari container: listen konstanta `containerEvents` (payload `ContainerSearchPayload`, keduanya dari `@arsi/container`) di `init(deps)`. Contoh: `product-management/events/containerSearch.ts` (global search Topbar → filter product). Container **tidak boleh** listen event modul/extension (CONTRACT §13.3).
 
 ### 3.11 `public.ts` — kontrak untuk extension
 
@@ -926,5 +927,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.3.0
+**Document version**: 0.4.0
 **Last updated**: 2026-09-25

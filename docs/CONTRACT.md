@@ -937,12 +937,28 @@ deps.events.on("user-management.user.updated", (payload) => {
 deps.events.emit("user-management.user.updated", { id: 1 });
 ```
 
+Container → module (contoh: global search di Topbar):
+
+```ts
+// Container component
+const events = useEventBus();
+events.emit("container.search.changed", { query: "phone" });
+
+// Module init
+deps.events.on<ContainerSearchPayload>(containerEvents.searchChanged, ({ query }) => {
+  useProductStore.getState().setSearch(query);
+});
+```
+
+Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-export dari `@arsi/container`.
+
 ### 13.2 Naming Convention
 
-| Layer     | Format                       | Contoh                         |
-| --------- | ---------------------------- | ------------------------------ |
-| Modul     | `<module>.<entity>.<action>` | `user-management.user.updated` |
-| Extension | `<client>.<entity>.<action>` | `client-a.audit.requested`     |
+| Layer     | Format                         | Contoh                         |
+| --------- | ------------------------------ | ------------------------------ |
+| Container | `container.<entity>.<action>`  | `container.search.changed`     |
+| Modul     | `<module>.<entity>.<action>`   | `user-management.user.updated` |
+| Extension | `<client>.<entity>.<action>`   | `client-a.audit.requested`     |
 
 ### 13.3 Aturan
 
@@ -950,6 +966,8 @@ deps.events.emit("user-management.user.updated", { id: 1 });
 - Modul **boleh** emit event yang tidak ada listener.
 - Extension **boleh** listen event modul.
 - Modul **tidak boleh** listen event extension.
+- Container **boleh** emit event; modul/extension **boleh** listen event container.
+- Container **tidak boleh** listen event modul/extension (base tidak depend ke atas).
 - Base **tidak boleh** depend ke event extension.
 - Event listener **wajib** register di `init(deps)`, bukan di top-level module.
 
@@ -1161,11 +1179,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.3.0
+**Document version**: 0.4.0
 **Last updated**: 2026-09-25
 
 **Changelog:**
 
+- **0.4.0** — Event container → module (`containerEvents` / `ContainerSearchPayload`), global search di Topbar sebagai sample; aturan di §13.
 - **0.3.0** — Notification service (`deps.notifications` / `useNotifications`) + bell header container; aturan di §7.4.
 - **0.2.0** — Brand token ARSI Purple (`#551AB9`) untuk light+dark, token semantik (`success`/`warning`/`info` + varian `-strong`), font Plus Jakarta Sans self-hosted, komponen `Card` di shared, dan aturan container self-contained (tanpa import `@arsi/shared`) di §9.4/§10.4.
 - **0.1.0** — Initial contract. Mencakup 20 section: layer rules, access patterns, state management (Zustand), service registry, data fetching (Axios + React Query), i18n, toast, modal, UI kit, Tailwind, slots, routes, events, configuration, naming conventions, versioning, testing, observability, governance, dan review checklist.
