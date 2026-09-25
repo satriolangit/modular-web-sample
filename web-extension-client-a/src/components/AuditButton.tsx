@@ -1,4 +1,10 @@
-import { useConfig, useEventBus, useToast, useTranslation } from '@arsi/container';
+import {
+  useConfig,
+  useEventBus,
+  useNotifications,
+  useToast,
+  useTranslation,
+} from '@arsi/container';
 import { Button } from '@arsi/shared';
 import type { User } from '@arsi/module-user-management';
 
@@ -9,6 +15,7 @@ export interface AuditButtonProps {
 export function AuditButton({ user }: AuditButtonProps) {
   const config = useConfig();
   const events = useEventBus();
+  const notifications = useNotifications();
   const toast = useToast();
   const { t } = useTranslation('client-a');
 
@@ -18,6 +25,12 @@ export function AuditButton({ user }: AuditButtonProps) {
 
   const handleClick = () => {
     events.emit('client-a.audit.requested', { userId: user.id });
+    notifications.push({
+      title: t('audit.requested'),
+      message: `${user.firstName} ${user.lastName} (#${user.id})`,
+      variant: 'info',
+      source: 'client-a',
+    });
     toast.info(t('audit.requested'));
   };
 

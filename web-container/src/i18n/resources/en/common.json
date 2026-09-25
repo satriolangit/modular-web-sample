@@ -13,7 +13,8 @@
     "close": "Close",
     "signOut": "Sign out",
     "toggleTheme": "Toggle theme",
-    "reload": "Reload page"
+    "reload": "Reload page",
+    "openNotifications": "Open notifications"
   },
   "home": {
     "title": "Welcome",
@@ -36,5 +37,14 @@
   "theme": {
     "light": "Light",
     "dark": "Dark"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet.",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark as read",
+    "remove": "Remove notification",
+    "clearAll": "Clear all",
+    "openWithCount": "Notifications, {{count}} unread"
   }
 }

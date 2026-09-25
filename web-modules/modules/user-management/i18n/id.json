@@ -56,5 +56,12 @@
     "error": "Gagal memuat pengguna.",
     "sidebarTitle": "Ekstensi klien",
     "sidebarEmpty": "Belum ada ekstensi klien."
+  },
+  "notifications": {
+    "sample": {
+      "action": "Kirim notif",
+      "title": "Notifikasi tentang {{name}}",
+      "message": "Dikirim dari sample modul user-management."
+    }
   }
 }

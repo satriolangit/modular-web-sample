@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { useToast } from '../hooks/useToast';
+import { NotificationBell } from '../notifications/NotificationBell';
 import { useAuthStore } from '../store/authStore';
 import { useLocaleStore } from '../store/localeStore';
 import { useThemeStore } from '../store/themeStore';
@@ -9,7 +10,7 @@ import { getInitials } from './getInitials';
 const focusRingClassName =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
-const iconButtonClassName = `inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-card shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground ${focusRingClassName}`;
+const iconButtonClassName = `relative inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-card shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground ${focusRingClassName}`;
 
 const ghostButtonClassName = `inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground ${focusRingClassName}`;
 
@@ -93,6 +94,7 @@ export function Topbar() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        <NotificationBell className={iconButtonClassName} />
         <span
           aria-hidden="true"
           className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground"

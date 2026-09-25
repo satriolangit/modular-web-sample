@@ -125,6 +125,7 @@ deps = {
   queryClient, // TanStack QueryClient
   toast, // Toast service
   modal, // Modal service
+  notifications, // Notification service (bell header)
   slots, // Slot registry
   routes, // Route registry
   menu, // Menu registry
@@ -164,6 +165,7 @@ import {
   // UI
   useToast,
   useModal,
+  useNotifications,
   useSlot,
 
   // Auth
@@ -668,6 +670,38 @@ Modul boleh pakai `toast.custom()` untuk render komponen sendiri. Tidak perlu re
 - Extension **boleh** override dengan `toast.custom()`.
 - Pesan toast **wajib** pakai i18n, bukan hardcode.
 
+### 7.4 Notifikasi (Bell Header)
+
+Notifikasi persisten (bell di Topbar container). Module/extension **mendorong** notifikasi; container merender.
+
+```ts
+// Di init (non-React)
+deps.notifications.push({ title: '...', message: '...', variant: 'info', source: 'user-management' });
+
+// Di component
+const { push, notifications, unreadCount } = useNotifications();
+push({ title: t('notifications.sample.title'), variant: 'success', source: 'client-a' });
+```
+
+Bentuk data:
+
+```ts
+interface NotificationInput {
+  title: string;                                  // wajib
+  message?: string;
+  variant?: 'info' | 'success' | 'warning' | 'error'; // default 'info'
+  source?: string;                                // '<module>' | '<client>' | 'container'
+}
+```
+
+Aturan:
+
+- Notifikasi **wajib** pakai `deps.notifications` atau `useNotifications`, bukan store/event buatan sendiri.
+- `source` **wajib** diisi namespace module/extension agar asal notifikasi jelas di panel.
+- Judul/pesan **wajib** i18n (namespace module/extension sendiri).
+- Daftar in-memory, maksimum 50 item terbaru; backend/websocket cukup memanggil `push` (tidak mengubah UI).
+- Container **tidak boleh** import `@arsi/shared`; bell memakai token styling container.
+
 ---
 
 ## 8. Modal — Dialog
@@ -1127,11 +1161,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.2.0
+**Document version**: 0.3.0
 **Last updated**: 2026-09-25
 
 **Changelog:**
 
+- **0.3.0** — Notification service (`deps.notifications` / `useNotifications`) + bell header container; aturan di §7.4.
 - **0.2.0** — Brand token ARSI Purple (`#551AB9`) untuk light+dark, token semantik (`success`/`warning`/`info` + varian `-strong`), font Plus Jakarta Sans self-hosted, komponen `Card` di shared, dan aturan container self-contained (tanpa import `@arsi/shared`) di §9.4/§10.4.
 - **0.1.0** — Initial contract. Mencakup 20 section: layer rules, access patterns, state management (Zustand), service registry, data fetching (Axios + React Query), i18n, toast, modal, UI kit, Tailwind, slots, routes, events, configuration, naming conventions, versioning, testing, observability, governance, dan review checklist.
 

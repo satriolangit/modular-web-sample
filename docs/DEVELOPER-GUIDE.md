@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.2.0
+**Version**: 0.3.0
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -388,6 +388,12 @@ Aturan: import `useQuery`/`useMutation`/`useQueryClient` **dari container**, buk
 - Halaman pakai `PageHeader` + state/error/empty dari shared (`ErrorState`, `DataTablePagination`, `DataTable` sudah punya empty/loading).
 - Navigasi memakai `react-router-dom` langsung (`useNavigate`, `useParams`, `Link`) — konvensi pilot saat ini.
 - Semua teks UI lewat i18n: `const { t } = useTranslation('<module>')`.
+- Feedback user: `useToast()` untuk pesan transient; `useNotifications()` untuk bell header (persisten, CONTRACT §7.4). `source` **wajib** di-namespace module/extension.
+
+```tsx
+const { push } = useNotifications();
+push({ title: t('notifications.sample.title'), variant: 'info', source: 'order-management' });
+```
 
 Form produksi: React Hook Form + Zod + `Form` shared.
 
@@ -464,6 +470,7 @@ Aturan `init`:
 - Service name = `<module>` (atau `<client>.<service>` untuk extension), harus unik.
 - Untuk backend nyata, baseURL service **wajib** path-based `/api/<service>` (CONTRACT §4.5). Pilot DummyJSON memakai `deps.config.apiBase` (runtime config, tanpa domain hardcode).
 - Modal: `deps.modal.register('<module>.<action>', Component)` — komponen menerima `{ payload, close }` dan merender Dialog sendiri (lihat `ProductDeleteDialog`).
+- Notifikasi non-React: `deps.notifications.push({ title, message?, variant?, source })` — mis. dari event listener atau integrasi backend; `source` = `<module>`/`<client>`. Contoh: `web-extension-client-a/src/components/AuditButton.tsx`.
 
 ### 3.11 `public.ts` — kontrak untuk extension
 
@@ -786,7 +793,7 @@ vi.mock('@arsi/container', () => ({
 }));
 ```
 
-Mock hanya hook yang dipakai komponen. Untuk barrel `public.ts`, sediakan semua hook yang tersentuh (lihat `product-management/public.test.ts`).
+Mock hanya hook yang dipakai komponen. Untuk barrel `public.ts`, sediakan semua hook yang tersentuh (lihat `product-management/public.test.ts`). Komponen yang memakai `useNotifications`/`useToast`/`useModal` perlu stub-nya agar panggilan bisa di-assert — contoh: `user-management/components/SendNotificationButton.test.tsx`, `web-extension-client-a/src/components/AuditButton.test.tsx`.
 
 ### 6.4 Pola 3 — hook module di component test
 
@@ -845,6 +852,7 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 - [ ] Semua teks UI pakai i18n (en + id), namespace `<module>`.
 - [ ] UI memakai komponen `@arsi/shared`; tidak import `components/ui/...`.
 - [ ] Styling memakai token (§5.4): tanpa hex mentah / utility `dark:`; kontras mengikuti CONTRACT §10.4.
+- [ ] Feedback memakai `useToast`/`useNotifications` (bukan store sendiri); `source` notifikasi di-namespace.
 - [ ] Store memakai persist key `module:<name>`; devtools via `isDev`.
 - [ ] `public.ts` diperbarui; alias/tsconfig/discover/config.json ter-wiring.
 - [ ] Test ditambahkan (service, query keys, store, public API, komponen).
@@ -872,6 +880,7 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 - `CONTRACT.md` §15 — Naming conventions.
 - `CONTRACT.md` §10.4 — Brand token ARSI Purple & aturan styling.
 - `CONTRACT.md` §9.4 — Aturan import UI kit (termasuk container self-contained).
+- `docs/phase.02-rbac-navigation.md` — rencana Fase 2: Keycloak RBAC + navigasi berbasis database.
 
 ### 9.2 Peta contoh di kode
 
@@ -917,5 +926,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.2.0
+**Document version**: 0.3.0
 **Last updated**: 2026-09-25
