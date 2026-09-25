@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.6.0
+**Version**: 0.6.1
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -882,6 +882,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Duplikat paket di bundle / chunk membengkak | Library di-import lintas tree tanpa dedupe. Cek `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map`; tambahkan ke `resolve.dedupe` + samakan versi (CONTRACT §1.6). |
 | `Invalid hook call` / `useNavigate() may be used only in the context of a <Router>` | Ada dua salinan React atau React Router di bundle. Tambahkan library ke `resolve.dedupe` di `vite.config.ts` + `vitest.config.ts`. |
 | Docker build gagal setelah tambah modul/dependency | `package.json` modul belum di-COPY atau lockfile belum di-commit. Jalankan `cd web-container && npm run check:dockerfile`. |
+| Error "Option 'baseUrl' is deprecated" (TS 6+) | tsconfig memakai `baseUrl`. Hapus `baseUrl`, pertahankan `paths` (relatif ke tsconfig, didukung sejak TS 4.1; TS 7 menghapus `baseUrl`). |
 
 ---
 
@@ -979,5 +980,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.6.0
+**Document version**: 0.6.1
 **Last updated**: 2026-09-25
