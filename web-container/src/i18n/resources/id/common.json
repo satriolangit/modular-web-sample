@@ -13,7 +13,8 @@
     "close": "Tutup",
     "signOut": "Keluar",
     "toggleTheme": "Ganti tema",
-    "reload": "Muat ulang"
+    "reload": "Muat ulang",
+    "openNotifications": "Buka notifikasi"
   },
   "home": {
     "title": "Selamat datang",
@@ -36,5 +37,14 @@
   "theme": {
     "light": "Terang",
     "dark": "Gelap"
+  },
+  "notifications": {
+    "title": "Notifikasi",
+    "empty": "Belum ada notifikasi.",
+    "markAllRead": "Tandai semua dibaca",
+    "markRead": "Tandai dibaca",
+    "remove": "Hapus notifikasi",
+    "clearAll": "Hapus semua",
+    "openWithCount": "Notifikasi, {{count}} belum dibaca"
   }
 }

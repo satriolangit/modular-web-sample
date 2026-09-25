@@ -11,6 +11,10 @@ import { createI18nInstance } from '../i18n';
 import { createLogger, type Logger } from '../logger/logger';
 import { createMenuRegistry, type MenuRegistry } from '../menu/menuRegistry';
 import { createModalService, type ModalService } from '../modal/modalService';
+import {
+  createNotificationService,
+  type NotificationService,
+} from '../notifications/notificationService';
 import { createQueryClient } from '../query/queryClient';
 import { createRouteRegistry, type RouteRegistry } from '../routes/routeRegistry';
 import { createSlotRegistry, type SlotRegistry } from '../slots/slotRegistry';
@@ -26,6 +30,7 @@ export interface Deps {
   queryClient: QueryClient;
   toast: ToastService;
   modal: ModalService;
+  notifications: NotificationService;
   slots: SlotRegistry;
   routes: RouteRegistry;
   menu: MenuRegistry;
@@ -43,6 +48,7 @@ export function createDeps(config: AppConfig): Deps {
   const queryClient = createQueryClient();
   const toast = createToastService();
   const modal = createModalService();
+  const notifications = createNotificationService();
   const slots = createSlotRegistry();
   const routes = createRouteRegistry();
   const menu = createMenuRegistry();
@@ -57,6 +63,7 @@ export function createDeps(config: AppConfig): Deps {
     queryClient,
     toast,
     modal,
+    notifications,
     slots,
     routes,
     menu,

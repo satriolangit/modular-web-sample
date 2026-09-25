@@ -5,6 +5,10 @@ export { useApiRegistry } from '../hooks/useApiRegistry';
 export { useEventBus } from '../hooks/useEventBus';
 export { useToast } from '../hooks/useToast';
 export { useModal } from '../hooks/useModal';
+export {
+  useNotifications,
+  type UseNotificationsResult,
+} from '../hooks/useNotifications';
 export { useSlot } from '../hooks/useSlot';
 export { useTheme } from '../hooks/useTheme';
 export { useLocale } from '../hooks/useLocale';
@@ -25,6 +29,12 @@ export type { Logger, LogLevel } from '../logger/logger';
 export type { ApiRegistry } from '../api/apiRegistry';
 export type { EventBus, EventHandler } from '../events/eventBus';
 export type { ToastService } from '../toast/toastService';
+export type {
+  AppNotification,
+  NotificationInput,
+  NotificationService,
+  NotificationVariant,
+} from '../notifications/notificationService';
 export type {
   ActiveModal,
   ModalComponentProps,
