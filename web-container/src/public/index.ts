@@ -3,6 +3,10 @@ export { useLogger } from '../hooks/useLogger';
 export { useApi } from '../hooks/useApi';
 export { useApiRegistry } from '../hooks/useApiRegistry';
 export { useEventBus } from '../hooks/useEventBus';
+export {
+  containerEvents,
+  type ContainerSearchPayload,
+} from '../events/containerEvents';
 export { useToast } from '../hooks/useToast';
 export { useModal } from '../hooks/useModal';
 export {

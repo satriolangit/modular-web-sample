@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useToast } from '../hooks/useToast';
 import { NotificationBell } from '../notifications/NotificationBell';
+import { GlobalSearch } from './GlobalSearch';
 import { useAuthStore } from '../store/authStore';
 import { useLocaleStore } from '../store/localeStore';
 import { useThemeStore } from '../store/themeStore';
@@ -92,6 +93,7 @@ export function Topbar() {
             </button>
           ))}
         </div>
+        <GlobalSearch />
       </div>
       <div className="flex items-center gap-3">
         <NotificationBell className={iconButtonClassName} />

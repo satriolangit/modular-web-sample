@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { Deps } from '@arsi/container';
 
 import { ProductDeleteDialog } from './components/ProductDeleteDialog';
+import { registerContainerSearchListener } from './events/containerSearch';
 import en from './i18n/en.json';
 import id from './i18n/id.json';
 import { productModals } from './modals';
@@ -59,4 +60,6 @@ export default async function init(deps: Deps): Promise<void> {
   });
 
   deps.modal.register(productModals.deleteConfirm, ProductDeleteDialog);
+
+  registerContainerSearchListener(deps.events);
 }

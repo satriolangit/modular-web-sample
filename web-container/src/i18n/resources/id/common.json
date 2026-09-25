@@ -38,6 +38,10 @@
     "light": "Terang",
     "dark": "Gelap"
   },
+  "search": {
+    "label": "Cari produk",
+    "placeholder": "Cari produk..."
+  },
   "notifications": {
     "title": "Notifikasi",
     "empty": "Belum ada notifikasi.",

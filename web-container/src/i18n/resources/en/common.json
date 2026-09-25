@@ -38,6 +38,10 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "search": {
+    "label": "Search products",
+    "placeholder": "Search products..."
+  },
   "notifications": {
     "title": "Notifications",
     "empty": "No notifications yet.",
