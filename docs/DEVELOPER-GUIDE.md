@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.4.0
+**Version**: 0.5.0
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -69,6 +69,7 @@ cd ../web-extension-client-a && npm install
 | `ARCHITECTURE.md` | Filosofi, layer, boot sequence, roadmap |
 | `CONTRACT.md` | Aturan keras per layer, naming, governance |
 | `DEVELOPER-GUIDE.md` (ini) | Langkah praktis membuat module/extension |
+| `docs/phase.02-rbac-navigation.md` | Rencana Fase 2: Keycloak RBAC + navigasi dari database |
 
 ---
 
@@ -473,6 +474,14 @@ Aturan `init`:
 - Notifikasi non-React: `deps.notifications.push({ title, message?, variant?, source })` — mis. dari event listener atau integrasi backend; `source` = `<module>`/`<client>`. Contoh: `web-extension-client-a/src/components/AuditButton.tsx`.
 - Event dari container: listen konstanta `containerEvents` (payload `ContainerSearchPayload`, keduanya dari `@arsi/container`) di `init(deps)`. Contoh: `product-management/events/containerSearch.ts` (global search Topbar → filter product). Container **tidak boleh** listen event modul/extension (CONTRACT §13.3).
 
+Inti listener event container di `init`:
+
+```ts
+deps.events.on<ContainerSearchPayload>(containerEvents.searchChanged, ({ query }) => {
+  useProductStore.getState().setSearch(query);
+});
+```
+
 ### 3.11 `public.ts` — kontrak untuk extension
 
 ```ts
@@ -809,10 +818,29 @@ vi.mock('../hooks/useProduct', () => ({
 
 Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import agar guard `initialized` fresh per test. Test idempotensi: panggil `init` dua kali, pastikan registrasi hanya sekali.
 
-### 6.6 Catatan
+### 6.6 Pola 5 — listener event container
+
+Event container di-listen di `init`, jadi test-nya unit test fungsi listener + fake EventBus. Partial-mock `@arsi/container` agar `containerEvents` **asli** tetap terpakai (nama event ikut teruji).
+
+```ts
+vi.mock('@arsi/container', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@arsi/container')>();
+  return { ...actual, isDev: false };
+});
+
+const bus = { on: /* simpan handler */, emit: /* panggil handler */ } as unknown as EventBus;
+registerContainerSearchListener(bus);
+bus.emit(containerEvents.searchChanged, { query: 'phone' });
+expect(useProductStore.getState().search).toBe('phone');
+```
+
+Lengkap: `product-management/events/containerSearch.test.ts`.
+
+### 6.7 Catatan
 
 - `vitest.setup.ts` web-modules memanggil RTL `cleanup()` setiap test (karena `globals: false`).
 - Store test: mock `isDev` (`vi.mock('@arsi/container', () => ({ isDev: false }))`) dan `localStorage.clear()` di `beforeEach`.
+- Test event container: jangan mock `containerEvents` dengan string literal — pakai `importOriginal` agar kontrak nama event ikut teruji.
 - Semua test dijalankan per repo: `cd web-modules && npm test`, dst.
 
 ---
@@ -836,6 +864,7 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 | Perubahan tidak muncul setelah ganti client | Symlink `current-client` berubah → restart dev server. |
 | Engine warning saat `npm install` | Node lokal > versi target beberapa paket; aman diabaikan selama test lulus. CI/Docker memakai Node 20. |
 | Mutasi DummyJSON "tidak tersimpan" | Memang simulasi (create/update/delete tidak persist). Pilot memakai strategi optimistic cache + rollback; saat backend nyata tambahkan `invalidateQueries` di `onSettled`. |
+| Search Topbar tidak memfilter produk | Listener `containerEvents.searchChanged` tidak ter-register (cek `init`) atau modul product tidak aktif di `config.json`. Listen lewat konstanta, bukan string literal. |
 
 ---
 
@@ -850,6 +879,7 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 - [ ] Service diregistrasi di `init`, nama unik & di-namespace.
 - [ ] Query key pakai factory + namespace; diekspor di `public.ts` bila dipakai extension.
 - [ ] Slot/modal/event/route di-namespace; route path unik + `meta.module`.
+- [ ] Event container di-listen lewat `containerEvents` di `init`; tidak listen event extension.
 - [ ] Semua teks UI pakai i18n (en + id), namespace `<module>`.
 - [ ] UI memakai komponen `@arsi/shared`; tidak import `components/ui/...`.
 - [ ] Styling memakai token (§5.4): tanpa hex mentah / utility `dark:`; kontras mengikuti CONTRACT §10.4.
@@ -898,6 +928,9 @@ Fake `deps` (cast `as unknown as Deps`) + `vi.resetModules()` + dynamic import a
 | Registry container (slot/route/menu/modal/event) | `web-container/src/{slots,routes,menu,modal,events}/` |
 | Bootstrap & discovery | `web-container/src/bootstrap/` |
 | Shared UI kit | `web-modules/shared/` |
+| Global search Topbar → event container → filter module | `web-container/src/layout/GlobalSearch.tsx`, `web-container/src/events/containerEvents.ts`, `product-management/events/containerSearch.ts` |
+| Notifikasi bell (module/extension → container) | `web-container/src/notifications/`, `user-management/components/SendNotificationButton.tsx`, `web-extension-client-a/src/components/AuditButton.tsx` |
+| Test palet & kontras token | `web-container/src/styles/tokens.test.ts` |
 
 ### 9.3 Skeleton minimal
 
@@ -927,5 +960,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.4.0
+**Document version**: 0.5.0
 **Last updated**: 2026-09-25
