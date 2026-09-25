@@ -94,6 +94,35 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 - Container **wajib** pakai `@arsi/module-<name>/entry`, bukan base.
 - Import relatif lintas modul **dilarang**.
 
+### 1.6 Dependency Policy (library/package)
+
+**Kepemilikan package** — install di repo pemiliknya; container **tidak** meng-install dependency modul/extension (Vite me-resolve dari tree asal file).
+
+| Package dipakai oleh | Install di | Contoh |
+| --- | --- | --- |
+| Container/shell saja | `web-container` | radix dialog, sonner |
+| UI kit (modul + extension) | `web-modules/shared` | radix, lucide, CVA |
+| Fitur modul | `web-modules` workspace | `cd web-modules && npm install <pkg> -w @arsi/module-<name>` |
+| Khusus client | `web-extension-<client>` | axios, react-router-dom |
+
+**Aturan keras:**
+
+- `react`/`react-dom` **wajib** `peerDependencies`; dilarang jadi `dependencies` di shared/modul/extension.
+- Library yang di-import lebih dari satu tree (container ↔ modul/extension) **wajib** masuk `resolve.dedupe` di `web-container/vite.config.ts`; versi disamakan (sumber versi = container).
+- Library berbasis React context/singleton (router, form, theme, query, state) **wajib** single copy.
+- Dilarang menambah library yang menduplikasi kapabilitas container: toast, modal, notifikasi, i18n, React Query, HTTP client, event bus.
+- Modul/extension **dilarang** punya Tailwind/PostCSS config; plugin Tailwind hanya di `shared/tailwind.preset.cjs`.
+- Global CSS dari library **dilarang** di-import dari modul; import hanya di `web-container/src/styles/globals.css`.
+- Workspace package baru (modul) → tambah `COPY <package.json>` di `web-container/Dockerfile` dan jalankan `npm run check:dockerfile`; lockfile **wajib** di-commit.
+
+**Verifikasi wajib saat menambah dependency:**
+
+1. `typecheck` + `lint` + `test` + `build:client-a` lulus (semua package terdampak).
+2. Tidak ada duplikat di bundle: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` → 1 root.
+3. Ukuran chunk tidak membengkak tanpa alasan (diff sebelum/sesudah).
+
+**Governance (diskusi lead dev):** lisensi (GPL/AGPL), ukuran bundle, status maintenance, hasil `npm audit`, dukungan React 19, format ESM/tree-shakeable, dan side-effect global.
+
 ---
 
 ## 2. Access Patterns — deps + hooks
@@ -1179,11 +1208,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.4.0
+**Document version**: 0.5.0
 **Last updated**: 2026-09-25
 
 **Changelog:**
 
+- **0.5.0** — Dependency Policy (§1.6): kepemilikan package, aturan peer/dedupe, larangan duplikasi kapabilitas container, aturan CSS/Tailwind, Docker `check:dockerfile`, dan verifikasi duplikat bundle.
 - **0.4.0** — Event container → module (`containerEvents` / `ContainerSearchPayload`), global search di Topbar sebagai sample; aturan di §13.
 - **0.3.0** — Notification service (`deps.notifications` / `useNotifications`) + bell header container; aturan di §7.4.
 - **0.2.0** — Brand token ARSI Purple (`#551AB9`) untuk light+dark, token semantik (`success`/`warning`/`info` + varian `-strong`), font Plus Jakarta Sans self-hosted, komponen `Card` di shared, dan aturan container self-contained (tanpa import `@arsi/shared`) di §9.4/§10.4.

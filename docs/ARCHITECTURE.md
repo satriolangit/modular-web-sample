@@ -1300,6 +1300,7 @@ const wrapped = {
 | Modul import modul lain         | Lewat event bus               |
 | Extension import internal modul | Import dari `public.ts`       |
 | Shared import container         | Shared harus pure             |
+| Modul install lib lintas tree tanpa dedupe | Tambah ke `resolve.dedupe` + samakan versi (CONTRACT §1.6) |
 
 ### 20.2 State
 

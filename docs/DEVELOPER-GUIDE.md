@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.5.0
+**Version**: 0.6.0
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -152,7 +152,7 @@ Studi kasus: `order-management`. Salin struktur dari `web-modules/modules/produc
 9. `i18n/en.json` + `i18n/id.json`
 10. `index.tsx` — `init(deps)`
 11. `public.ts` — kontrak
-12. Wiring container (4 file) + web-modules (2 file)
+12. Wiring container (4 file) + web-modules (2 file) + Dockerfile (COPY package.json)
 13. Tests
 14. Verifikasi
 
@@ -498,7 +498,7 @@ export type { Order, OrderListResponse } from './types';
 
 Apa pun yang **tidak** diekspor di sini dianggap internal — extension dilarang mengaksesnya.
 
-### 3.12 Wiring — 6 file (jangan ada yang terlewat)
+### 3.12 Wiring — 7 file (jangan ada yang terlewat)
 
 | File | Yang ditambahkan |
 | --- | --- |
@@ -508,6 +508,7 @@ Apa pun yang **tidak** diekspor di sini dianggap internal — extension dilarang
 | `web-container/public/config.json` | `"modules": [..., "order-management"]` |
 | `web-modules/aliases.cjs` | alias (untuk vitest repo web-modules) |
 | `web-modules/tsconfig.json` | paths (untuk typecheck repo web-modules) |
+| `web-container/Dockerfile` | `COPY web-modules/modules/order-management/package.json ...` sebelum `npm ci` (+ `npm run check:dockerfile`) |
 
 ```js
 // web-container/aliases.cjs — urutan penting!
@@ -538,10 +539,23 @@ Pola mocking lengkap di [bagian 6](#6-testing-playbook).
 
 ```bash
 cd web-modules && npm run typecheck && npm test && npm run lint
-cd ../web-container && npm run typecheck && npm test && npm run build:client-a
+cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
 cd ../web-container && npm run dev:client-a
 # buka http://localhost:5173 → menu Orders muncul, halaman render
 ```
+
+### 3.15 Menambah dependency (library/package)
+
+Aturan lengkap: CONTRACT §1.6. Langkah praktis:
+
+1. Tentukan pemilik: UI kit → `shared`; fitur → package modul; khusus client → extension; shell → container.
+2. Install di repo pemiliknya: `cd web-modules && npm install <pkg> -w @arsi/module-<name>` (atau `npm install` di container/extension). Commit lockfile.
+3. `react`/`react-dom` tetap peer; jangan dijadikan dependency.
+4. Jika library di-import container **dan** modul/extension → tambahkan ke `resolve.dedupe` (`web-container/vite.config.ts`) + samakan versi. Lib berbasis context/singleton **wajib** single copy.
+5. Jangan tambah lib yang menduplikasi kapabilitas container (toast/modal/notifikasi/i18n/query/HTTP/event).
+6. Library tanpa global CSS; plugin Tailwind hanya di preset shared.
+7. Modul baru → tambah `COPY package.json` di Dockerfile + `npm run check:dockerfile`.
+8. Verifikasi duplikat: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` harus 1 root; bandingkan ukuran chunk.
 
 ---
 
@@ -865,6 +879,9 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Engine warning saat `npm install` | Node lokal > versi target beberapa paket; aman diabaikan selama test lulus. CI/Docker memakai Node 20. |
 | Mutasi DummyJSON "tidak tersimpan" | Memang simulasi (create/update/delete tidak persist). Pilot memakai strategi optimistic cache + rollback; saat backend nyata tambahkan `invalidateQueries` di `onSettled`. |
 | Search Topbar tidak memfilter produk | Listener `containerEvents.searchChanged` tidak ter-register (cek `init`) atau modul product tidak aktif di `config.json`. Listen lewat konstanta, bukan string literal. |
+| Duplikat paket di bundle / chunk membengkak | Library di-import lintas tree tanpa dedupe. Cek `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map`; tambahkan ke `resolve.dedupe` + samakan versi (CONTRACT §1.6). |
+| `Invalid hook call` / `useNavigate() may be used only in the context of a <Router>` | Ada dua salinan React atau React Router di bundle. Tambahkan library ke `resolve.dedupe` di `vite.config.ts` + `vitest.config.ts`. |
+| Docker build gagal setelah tambah modul/dependency | `package.json` modul belum di-COPY atau lockfile belum di-commit. Jalankan `cd web-container && npm run check:dockerfile`. |
 
 ---
 
@@ -884,6 +901,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - [ ] UI memakai komponen `@arsi/shared`; tidak import `components/ui/...`.
 - [ ] Styling memakai token (§5.4): tanpa hex mentah / utility `dark:`; kontras mengikuti CONTRACT §10.4.
 - [ ] Feedback memakai `useToast`/`useNotifications` (bukan store sendiri); `source` notifikasi di-namespace.
+- [ ] Dependency baru mengikuti CONTRACT §1.6 (react tetap peer, dedupe jika lintas tree, tanpa global CSS).
 - [ ] Store memakai persist key `module:<name>`; devtools via `isDev`.
 - [ ] `public.ts` diperbarui; alias/tsconfig/discover/config.json ter-wiring.
 - [ ] Test ditambahkan (service, query keys, store, public API, komponen).
@@ -896,6 +914,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - [ ] Tidak override service core; service baru bernama `<client>.<service>`.
 - [ ] Slot/route/modal/i18n override sesuai kesepakatan; tidak mengisi slot yang tidak dideklarasikan.
 - [ ] Styling override memakai token (§5.4); tanpa hex mentah / utility `dark:`.
+- [ ] Dependency baru mengikuti CONTRACT §1.6 (react tetap peer, dedupe jika lintas tree).
 - [ ] Tidak listen event extension lain; tidak membuat module listen event extension.
 - [ ] `manifest.json` diperbarui (client, modules, overrides).
 - [ ] Test override ditambahkan; `typecheck`, `test`, `lint` lulus.
@@ -956,9 +975,9 @@ src/components/…      → komponen khas client
 src/overrides/<module>/…  → halaman override
 ```
 
-Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti nama & isi. Jangan lupa [wiring 6 file](#312-wiring--6-file-jangan-ada-yang-terlewat) untuk module baru.
+Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti nama & isi. Jangan lupa [wiring 7 file](#312-wiring--7-file-jangan-ada-yang-terlewat) untuk module baru.
 
 ---
 
-**Document version**: 0.5.0
+**Document version**: 0.6.0
 **Last updated**: 2026-09-25
