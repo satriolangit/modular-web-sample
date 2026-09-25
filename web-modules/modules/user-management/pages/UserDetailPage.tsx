@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useSlot, useTranslation } from '@arsi/container';
 import { Button, Skeleton } from '@arsi/shared';
 
+import { SendNotificationButton } from '../components/SendNotificationButton';
 import { UserDetailCard } from '../components/UserDetailCard';
 import { useUser } from '../hooks/useUser';
 import { userSlots } from '../slots';
@@ -15,10 +16,11 @@ export function UserDetailPage() {
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-6 flex items-center gap-2">
         <Button asChild variant="ghost" size="sm">
           <Link to="/users">{t('actions.back')}</Link>
         </Button>
+        {user ? <SendNotificationButton user={user} /> : null}
       </div>
       {isLoading ? (
         <div className="space-y-3">

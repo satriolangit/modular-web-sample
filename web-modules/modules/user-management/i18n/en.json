@@ -56,5 +56,12 @@
     "error": "Failed to load user.",
     "sidebarTitle": "Client extensions",
     "sidebarEmpty": "No client extension attached."
+  },
+  "notifications": {
+    "sample": {
+      "action": "Send notif",
+      "title": "Notification about {{name}}",
+      "message": "Pushed from the user-management module sample."
+    }
   }
 }
