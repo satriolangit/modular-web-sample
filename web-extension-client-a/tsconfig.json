@@ -16,7 +16,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "types": ["vite/client", "node"],
-    "baseUrl": ".",
     "paths": {
       "@arsi/container": ["../web-container/src/public/index.ts"],
       "@arsi/shared": ["../web-modules/shared/index.ts"],
