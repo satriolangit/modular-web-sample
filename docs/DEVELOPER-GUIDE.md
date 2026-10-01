@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.6.1
+**Version**: 0.6.2
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -948,6 +948,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Registry container (slot/route/menu/modal/event) | `web-container/src/{slots,routes,menu,modal,events}/` |
 | Bootstrap & discovery | `web-container/src/bootstrap/` |
 | Shared UI kit | `web-modules/shared/` |
+| Reference module (demo semua dependency container: api, apiRegistry, query, zustand, toast, modal, notifications, events, slots, i18n, logger) | `web-modules/modules/module-sample/` |
 | Global search Topbar → event container → filter module | `web-container/src/layout/GlobalSearch.tsx`, `web-container/src/events/containerEvents.ts`, `product-management/events/containerSearch.ts` |
 | Notifikasi bell (module/extension → container) | `web-container/src/notifications/`, `user-management/components/SendNotificationButton.tsx`, `web-extension-client-a/src/components/AuditButton.tsx` |
 | Test palet & kontras token | `web-container/src/styles/tokens.test.ts` |
@@ -980,5 +981,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.6.1
+**Document version**: 0.6.2
 **Last updated**: 2026-09-25
