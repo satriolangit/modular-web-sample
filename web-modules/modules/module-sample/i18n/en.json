@@ -1,0 +1,145 @@
+{
+  "title": "Module Sample",
+  "menu": {
+    "root": "Module Sample"
+  },
+  "actions": {
+    "back": "Back to overview",
+    "reset": "Reset"
+  },
+  "overview": {
+    "description": "Living reference for the container dependency surface. Open a sample page below.",
+    "runtimeTitle": "Runtime info",
+    "client": "Client",
+    "apiBase": "API base",
+    "featureFlags": "Feature flags",
+    "user": "Signed-in user",
+    "theme": "Theme",
+    "locale": "Locale",
+    "samplesTitle": "Samples",
+    "slotTitle": "Slot: {{name}}",
+    "slotEmpty": "No extension fills this slot yet. Fill it with deps.slots.register(sampleSlots.overviewPanel, Component)."
+  },
+  "nav": {
+    "api": "deps.api",
+    "apiRegistry": "apiRegistry",
+    "query": "React Query",
+    "store": "Zustand store",
+    "toast": "Toast",
+    "modal": "Modal",
+    "notifications": "Notifications",
+    "events": "Events",
+    "slots": "Slots",
+    "i18n": "i18n",
+    "logger": "Logger"
+  },
+  "navDesc": {
+    "api": "Default axios instance (deps.api / useApi)",
+    "apiRegistry": "Named service client registered in init",
+    "query": "Server state with useQuery, useMutation, useQueryClient",
+    "store": "Client state with zustand + persist",
+    "toast": "Transient feedback with useToast",
+    "modal": "Registered modal with deps.modal.register",
+    "notifications": "Push to the container notification bell",
+    "events": "Event bus: module events + container events",
+    "slots": "Extension point with useSlot",
+    "i18n": "Translations with useTranslation",
+    "logger": "Structured logging with useLogger"
+  },
+  "api": {
+    "title": "deps.api",
+    "description": "Default axios instance created by the container with config.apiBase.",
+    "loadUser": "Load user {{id}}",
+    "result": "Response",
+    "hint": "Use deps.api for simple endpoints on the same baseURL; use apiRegistry when a service needs its own client or config."
+  },
+  "apiRegistry": {
+    "title": "apiRegistry",
+    "description": "Named client registered in init(deps): deps.apiRegistry.register('module-sample', ...).",
+    "userId": "User ID",
+    "result": "Result",
+    "hint": "Service factories receive the axios instance; components read it with useApiRegistry().get('module-sample')."
+  },
+  "query": {
+    "title": "React Query",
+    "description": "useQuery + useMutation + useQueryClient invalidation.",
+    "titleLabel": "Post title",
+    "bodyLabel": "Post body",
+    "create": "Create post",
+    "createSuccess": "Post created (dummyjson does not persist)",
+    "createError": "Failed to create post",
+    "listTitle": "Posts",
+    "status": "Fetching: {{fetching}} · Last update: {{updatedAt}}",
+    "invalidate": "Invalidate posts"
+  },
+  "store": {
+    "title": "Zustand store",
+    "description": "Client state persisted under module:module-sample.",
+    "counter": "Counter",
+    "note": "Note",
+    "notePlaceholder": "Write something — it survives reload",
+    "showDetails": "Show details",
+    "stateTitle": "Persisted state",
+    "hint": "Reload the page: counter, note, and toggle are restored from localStorage."
+  },
+  "toast": {
+    "title": "Toast",
+    "description": "Transient feedback via useToast (sonner under the hood).",
+    "success": "Success toast",
+    "error": "Error toast",
+    "info": "Info toast",
+    "custom": "Custom toast",
+    "customMessage": "Custom element toast"
+  },
+  "modal": {
+    "title": "Modal",
+    "description": "Modal registered in init: deps.modal.register(sampleModals.info, Component).",
+    "open": "Open info modal",
+    "modalTitle": "Hello from module-sample",
+    "modalMessage": "This modal received payload: {{payload}}",
+    "close": "Close"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Push persistent notifications to the container bell (useNotifications).",
+    "info": "Info notification",
+    "success": "Success notification",
+    "warning": "Warning notification",
+    "error": "Error notification",
+    "unread": "Unread: {{count}}",
+    "pushed": "Notification pushed to the bell (topbar)."
+  },
+  "events": {
+    "title": "Events",
+    "description": "Emit module events and listen to container events.",
+    "emit": "Emit sample.postCreated",
+    "emitted": "Last module event",
+    "none": "No event yet",
+    "containerSearch": "Last container search",
+    "containerSearchHint": "Type in the topbar search box — this listens to containerEvents.searchChanged."
+  },
+  "slots": {
+    "title": "Slots",
+    "description": "Extension points: modules declare slot names, extensions fill them.",
+    "name": "Slot name",
+    "filled": "Filled by extension",
+    "empty": "Not filled yet",
+    "howTo": "Fill it from an extension: deps.slots.register(sampleSlots.overviewPanel, Component)."
+  },
+  "i18n": {
+    "title": "i18n",
+    "description": "Translations from the module-sample namespace (en/id).",
+    "greeting": "Hello, {{name}}!",
+    "current": "Current locale: {{locale}}",
+    "switch": "Switch to {{locale}}"
+  },
+  "logger": {
+    "title": "Logger",
+    "description": "Structured logging via useLogger — open the browser console.",
+    "debug": "Log debug",
+    "info": "Log info",
+    "warn": "Log warn",
+    "error": "Log error",
+    "logged": "Last log: {{level}} — {{message}}"
+  }
+}

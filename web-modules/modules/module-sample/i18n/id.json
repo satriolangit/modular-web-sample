@@ -1,0 +1,145 @@
+{
+  "title": "Module Sample",
+  "menu": {
+    "root": "Module Sample"
+  },
+  "actions": {
+    "back": "Kembali ke ringkasan",
+    "reset": "Reset"
+  },
+  "overview": {
+    "description": "Referensi hidup untuk dependency container. Buka salah satu halaman sample di bawah.",
+    "runtimeTitle": "Info runtime",
+    "client": "Klien",
+    "apiBase": "API base",
+    "featureFlags": "Feature flags",
+    "user": "Pengguna aktif",
+    "theme": "Tema",
+    "locale": "Bahasa",
+    "samplesTitle": "Sample",
+    "slotTitle": "Slot: {{name}}",
+    "slotEmpty": "Belum ada extension yang mengisi slot ini. Isi dengan deps.slots.register(sampleSlots.overviewPanel, Component)."
+  },
+  "nav": {
+    "api": "deps.api",
+    "apiRegistry": "apiRegistry",
+    "query": "React Query",
+    "store": "Zustand store",
+    "toast": "Toast",
+    "modal": "Modal",
+    "notifications": "Notifikasi",
+    "events": "Event",
+    "slots": "Slot",
+    "i18n": "i18n",
+    "logger": "Logger"
+  },
+  "navDesc": {
+    "api": "Instance axios default (deps.api / useApi)",
+    "apiRegistry": "Service client bernama, diregistrasi di init",
+    "query": "Server state dengan useQuery, useMutation, useQueryClient",
+    "store": "Client state dengan zustand + persist",
+    "toast": "Feedback transient dengan useToast",
+    "modal": "Modal terdaftar via deps.modal.register",
+    "notifications": "Kirim ke bell notifikasi container",
+    "events": "Event bus: event modul + event container",
+    "slots": "Extension point dengan useSlot",
+    "i18n": "Terjemahan dengan useTranslation",
+    "logger": "Logging terstruktur dengan useLogger"
+  },
+  "api": {
+    "title": "deps.api",
+    "description": "Instance axios default yang dibuat container dengan config.apiBase.",
+    "loadUser": "Muat pengguna {{id}}",
+    "result": "Respons",
+    "hint": "Pakai deps.api untuk endpoint sederhana dengan baseURL yang sama; pakai apiRegistry bila service butuh client/config sendiri."
+  },
+  "apiRegistry": {
+    "title": "apiRegistry",
+    "description": "Client bernama yang diregistrasi di init(deps): deps.apiRegistry.register('module-sample', ...).",
+    "userId": "ID pengguna",
+    "result": "Hasil",
+    "hint": "Service factory menerima instance axios; komponen membacanya via useApiRegistry().get('module-sample')."
+  },
+  "query": {
+    "title": "React Query",
+    "description": "useQuery + useMutation + invalidasi useQueryClient.",
+    "titleLabel": "Judul post",
+    "bodyLabel": "Isi post",
+    "create": "Buat post",
+    "createSuccess": "Post dibuat (dummyjson tidak menyimpan)",
+    "createError": "Gagal membuat post",
+    "listTitle": "Post",
+    "status": "Fetching: {{fetching}} · Update terakhir: {{updatedAt}}",
+    "invalidate": "Invalidate post"
+  },
+  "store": {
+    "title": "Zustand store",
+    "description": "Client state dengan persist key module:module-sample.",
+    "counter": "Counter",
+    "note": "Catatan",
+    "notePlaceholder": "Tulis sesuatu — bertahan setelah reload",
+    "showDetails": "Tampilkan detail",
+    "stateTitle": "State tersimpan",
+    "hint": "Reload halaman: counter, catatan, dan toggle dipulihkan dari localStorage."
+  },
+  "toast": {
+    "title": "Toast",
+    "description": "Feedback transient via useToast (sonner di balik layar).",
+    "success": "Toast sukses",
+    "error": "Toast error",
+    "info": "Toast info",
+    "custom": "Toast kustom",
+    "customMessage": "Toast elemen kustom"
+  },
+  "modal": {
+    "title": "Modal",
+    "description": "Modal diregistrasi di init: deps.modal.register(sampleModals.info, Component).",
+    "open": "Buka modal info",
+    "modalTitle": "Halo dari module-sample",
+    "modalMessage": "Modal ini menerima payload: {{payload}}",
+    "close": "Tutup"
+  },
+  "notifications": {
+    "title": "Notifikasi",
+    "description": "Kirim notifikasi persisten ke bell container (useNotifications).",
+    "info": "Notifikasi info",
+    "success": "Notifikasi sukses",
+    "warning": "Notifikasi peringatan",
+    "error": "Notifikasi error",
+    "unread": "Belum dibaca: {{count}}",
+    "pushed": "Notifikasi dikirim ke bell (topbar)."
+  },
+  "events": {
+    "title": "Event",
+    "description": "Emit event modul dan listen event container.",
+    "emit": "Emit sample.postCreated",
+    "emitted": "Event modul terakhir",
+    "none": "Belum ada event",
+    "containerSearch": "Pencarian container terakhir",
+    "containerSearchHint": "Ketik di search Topbar — halaman ini mendengarkan containerEvents.searchChanged."
+  },
+  "slots": {
+    "title": "Slot",
+    "description": "Extension point: modul mendeklarasikan nama slot, extension mengisinya.",
+    "name": "Nama slot",
+    "filled": "Diisi extension",
+    "empty": "Belum diisi",
+    "howTo": "Isi dari extension: deps.slots.register(sampleSlots.overviewPanel, Component)."
+  },
+  "i18n": {
+    "title": "i18n",
+    "description": "Terjemahan dari namespace module-sample (en/id).",
+    "greeting": "Halo, {{name}}!",
+    "current": "Bahasa saat ini: {{locale}}",
+    "switch": "Ganti ke {{locale}}"
+  },
+  "logger": {
+    "title": "Logger",
+    "description": "Logging terstruktur via useLogger — buka console browser.",
+    "debug": "Log debug",
+    "info": "Log info",
+    "warn": "Log warn",
+    "error": "Log error",
+    "logged": "Log terakhir: {{level}} — {{message}}"
+  }
+}
