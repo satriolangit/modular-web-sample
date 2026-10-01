@@ -8,6 +8,7 @@ COPY web-modules/shared/package.json ./web-modules/shared/
 # Modul baru: tambah COPY package.json-nya di sini, lalu jalankan `npm run check:dockerfile` di web-container.
 COPY web-modules/modules/user-management/package.json ./web-modules/modules/user-management/
 COPY web-modules/modules/product-management/package.json ./web-modules/modules/product-management/
+COPY web-modules/modules/module-sample/package.json ./web-modules/modules/module-sample/
 COPY web-extension-client-a/package.json web-extension-client-a/package-lock.json ./web-extension-client-a/
 
 RUN cd web-container && npm ci
