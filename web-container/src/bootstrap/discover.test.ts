@@ -20,6 +20,6 @@ describe('discover', () => {
   it('fails fast when config declares a module that is not wired', async () => {
     const deps = createFakeDeps(['not-a-real-module']);
 
-    await expect(discover(deps)).rejects.toThrow(/not wired in discover\.ts/);
+    await expect(discover(deps)).rejects.toThrow(/not wired in moduleLoaders\.generated\.ts/);
   });
 });

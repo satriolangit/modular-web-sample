@@ -1,15 +1,11 @@
 import type { Deps } from '../di/deps';
+import { moduleLoaders, type InitHook } from './moduleLoaders.generated';
 
-export type InitHook = (deps: Deps) => Promise<void> | void;
+export type { InitHook } from './moduleLoaders.generated';
 
 interface ModuleEntryPoint {
   default: InitHook;
 }
-
-const moduleLoaders: Record<string, () => Promise<ModuleEntryPoint>> = {
-  'user-management': () => import('@arsi/module-user-management/entry'),
-  'product-management': () => import('@arsi/module-product-management/entry'),
-};
 
 const extensionLoader = (): Promise<ModuleEntryPoint> => import('@arsi/extension');
 
@@ -18,7 +14,7 @@ export async function discover(deps: Deps): Promise<void> {
     const load = moduleLoaders[moduleName];
     if (!load) {
       throw new Error(
-        `[bootstrap] module "${moduleName}" is declared in config.modules but is not wired in discover.ts`,
+        `[bootstrap] module "${moduleName}" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run \`npm run gen:modules\`)`,
       );
     }
     const entry = await load();

@@ -18,16 +18,8 @@
     "paths": {
       "@arsi/container": ["./src/public/index.ts"],
       "@arsi/shared": ["../web-modules/shared/index.ts"],
-      "@arsi/module-user-management": ["../web-modules/modules/user-management/public.ts"],
-      "@arsi/module-user-management/entry": [
-        "../web-modules/modules/user-management/index.tsx"
-      ],
-      "@arsi/module-product-management": [
-        "../web-modules/modules/product-management/public.ts"
-      ],
-      "@arsi/module-product-management/entry": [
-        "../web-modules/modules/product-management/index.tsx"
-      ],
+      "@arsi/module-*/entry": ["../web-modules/modules/*/index.tsx"],
+      "@arsi/module-*": ["../web-modules/modules/*/public.ts"],
       "@arsi/extension": ["./current-client/src/index.tsx"]
     }
   },

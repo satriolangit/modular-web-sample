@@ -7,11 +7,16 @@
     "node": ">=20"
   },
   "scripts": {
+    "gen:modules": "node scripts/generate-module-loaders.mjs",
+    "predev:client-a": "npm run gen:modules",
     "dev:client-a": "vite",
+    "prebuild:client-a": "npm run gen:modules",
     "build:client-a": "vite build --outDir dist/client-a",
     "preview": "vite preview",
     "link:client-a": "ln -sfn ../web-extension-client-a current-client",
+    "pretypecheck": "npm run gen:modules",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "pretest": "npm run gen:modules",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts,.tsx",
