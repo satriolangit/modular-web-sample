@@ -1,5 +1,6 @@
 import type { AxiosInstance } from 'axios';
 import type { Deps } from '@arsi/container';
+import { sampleSlots } from '@arsi/module-module-sample';
 import { userKeys, userSlots } from '@arsi/module-user-management';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -70,17 +71,25 @@ describe('client-a extension init', () => {
     expect(client.defaults.baseURL).toBe('/api/audit-client-a');
   });
 
-  it('fills the module slot and overrides the detail route', async () => {
+  it('fills the module slots and overrides routes (tier 1 + 2)', async () => {
     const { deps, slots, routes } = createFakeDeps();
     const init = await loadInit();
 
     await init(deps);
 
     expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.anything());
-    expect(slots.register).toHaveBeenCalledTimes(1);
+    expect(slots.register).toHaveBeenCalledWith(sampleSlots.overviewPanel, expect.anything());
+    expect(slots.register).toHaveBeenCalledTimes(2);
     expect(routes.override).toHaveBeenCalledWith(
       '/users/:id',
       expect.objectContaining({ element: expect.anything() }),
+    );
+    expect(routes.override).toHaveBeenCalledWith(
+      '/module-sample/extension-points',
+      expect.objectContaining({
+        element: expect.anything(),
+        meta: { group: 'sample', module: 'module-sample' },
+      }),
     );
   });
 
@@ -122,7 +131,7 @@ describe('client-a extension init', () => {
     await init(deps);
 
     expect(apiRegistry.register).toHaveBeenCalledTimes(1);
-    expect(slots.register).toHaveBeenCalledTimes(1);
-    expect(routes.override).toHaveBeenCalledTimes(1);
+    expect(slots.register).toHaveBeenCalledTimes(2);
+    expect(routes.override).toHaveBeenCalledTimes(2);
   });
 });

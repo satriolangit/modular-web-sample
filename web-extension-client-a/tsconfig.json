@@ -19,7 +19,8 @@
     "paths": {
       "@arsi/container": ["../web-container/src/public/index.ts"],
       "@arsi/shared": ["../web-modules/shared/index.ts"],
-      "@arsi/module-user-management": ["../web-modules/modules/user-management/public.ts"]
+      "@arsi/module-user-management": ["../web-modules/modules/user-management/public.ts"],
+      "@arsi/module-module-sample": ["../web-modules/modules/module-sample/public.ts"]
     }
   },
   "include": ["src", "vitest.config.ts"]

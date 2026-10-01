@@ -12,4 +12,11 @@ module.exports = {
     'user-management',
     'public.ts',
   ),
+  '@arsi/module-module-sample': path.join(
+    workspaceRoot,
+    'web-modules',
+    'modules',
+    'module-sample',
+    'public.ts',
+  ),
 };

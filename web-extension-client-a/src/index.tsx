@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Deps } from '@arsi/container';
+import { sampleSlots } from '@arsi/module-module-sample';
 import {
   userEvents,
   userKeys,
@@ -8,6 +9,8 @@ import {
 } from '@arsi/module-user-management';
 
 import { AuditButton } from './components/AuditButton';
+import { ClientAExtensionPointsPage } from './components/ClientAExtensionPointsPage';
+import { ClientASamplePanel } from './components/ClientASamplePanel';
 import en from './i18n/en.json';
 import id from './i18n/id.json';
 import { ClientAUserDetail } from './overrides/user-management/ClientAUserDetail';
@@ -49,6 +52,15 @@ export default async function init(deps: Deps): Promise<void> {
   deps.routes.override('/users/:id', {
     element: <ClientAUserDetail />,
     meta: { group: 'user', module: 'user-management' },
+  });
+
+  // Tier 1 — slot: isi extension point milik module-sample.
+  deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
+
+  // Tier 2 — route override: ganti halaman extension-points milik module-sample.
+  deps.routes.override('/module-sample/extension-points', {
+    element: <ClientAExtensionPointsPage />,
+    meta: { group: 'sample', module: 'module-sample' },
   });
 
   deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {

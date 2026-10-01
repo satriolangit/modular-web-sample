@@ -7,5 +7,17 @@
     "title": "Client A user detail",
     "description": "This page is rendered by the client-a route override."
   },
-  "badge": "Extended by client-a"
+  "badge": "Extended by client-a",
+  "sample": {
+    "panelBadge": "Slot filled",
+    "panelTitle": "Client A panel",
+    "panelDescription": "Injected into module-sample.overviewPanel via deps.slots.register — no module change.",
+    "pageTitle": "Client A extension points",
+    "pageDescription": "This page replaces the module page via deps.routes.override and uses a wrapped module service.",
+    "routeBadge": "Route overridden",
+    "userId": "User ID (1-3 allowed)",
+    "error": "Failed to load user",
+    "wrappedNote": "Data comes from createSampleService(apiRegistry.get('module-sample')) wrapped by client-a: adds a suffix, blocks ID > 3, and logs an event.",
+    "back": "Back to module overview"
+  }
 }

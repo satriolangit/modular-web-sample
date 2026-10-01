@@ -7,5 +7,17 @@
     "title": "Detail pengguna Client A",
     "description": "Halaman ini dirender oleh route override client-a."
   },
-  "badge": "Diperluas oleh client-a"
+  "badge": "Diperluas oleh client-a",
+  "sample": {
+    "panelBadge": "Slot terisi",
+    "panelTitle": "Panel Client A",
+    "panelDescription": "Disuntikkan ke module-sample.overviewPanel via deps.slots.register — tanpa mengubah modul.",
+    "pageTitle": "Extension point Client A",
+    "pageDescription": "Halaman ini menggantikan halaman modul via deps.routes.override dan memakai service modul yang dibungkus.",
+    "routeBadge": "Route di-override",
+    "userId": "ID pengguna (hanya 1-3)",
+    "error": "Gagal memuat pengguna",
+    "wrappedNote": "Data berasal dari createSampleService(apiRegistry.get('module-sample')) yang dibungkus client-a: menambah suffix, memblokir ID > 3, dan mencatat event.",
+    "back": "Kembali ke ringkasan modul"
+  }
 }
