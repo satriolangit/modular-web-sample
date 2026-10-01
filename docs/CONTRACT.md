@@ -73,25 +73,26 @@ Setiap layer expose hanya lewat file tertentu:
 | Container                      | `src/public/index.ts`                                           |
 | Shared                         | `shared/index.ts`                                               |
 | Module                         | `modules/<name>/public.ts`                                      |
-| Module entry (untuk container) | `modules/<name>/index.ts` via alias `@arsi/module-<name>/entry` |
+| Module entry (untuk container) | `modules/<name>/index.tsx` via generated loader map (`src/bootstrap/moduleLoaders.generated.ts`) |
 | Extension                      | `src/index.tsx` (hanya default export `init(deps)`)             |
 
 Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 
 ### 1.5 Alias
 
-| Alias                       | Resolve ke                             | Untuk siapa       |
-| --------------------------- | -------------------------------------- | ----------------- |
-| `@arsi/container`           | `web-container/src/public`             | Modul & extension |
-| `@arsi/shared`              | `web-modules/shared`                   | Modul & extension |
-| `@arsi/module-<name>`       | `web-modules/modules/<name>/public.ts` | Extension         |
-| `@arsi/module-<name>/entry` | `web-modules/modules/<name>/index.ts`  | Container         |
-| `@arsi/extension`           | `web-container/current-client/src`     | Container         |
+| Alias                              | Resolve ke                             | Untuk siapa       |
+| ---------------------------------- | -------------------------------------- | ----------------- |
+| `@arsi/container`                  | `web-container/src/public`             | Modul & extension |
+| `@arsi/shared`                     | `web-modules/shared`                   | Modul & extension |
+| `@arsi/module-<name>` (wildcard)   | `web-modules/modules/<name>/public.ts` | Extension         |
+| `@arsi/module-<name>/entry` (wildcard) | `web-modules/modules/<name>/index.tsx` | Container (generated loader map) |
+| `@arsi/extension`                  | `web-container/current-client/src`     | Container         |
 
 **Aturan:**
 
-- Extension **wajib** pakai `@arsi/module-<name>`, bukan `/entry`.
-- Container **wajib** pakai `@arsi/module-<name>/entry`, bukan base.
+- Extension **wajib** pakai `@arsi/module-<name>` (public API).
+- Container memakai `@arsi/module-<name>/entry` **hanya** dari file generated; menambah alias/paths per modul **dilarang**.
+- Pola `/entry` **wajib** di atas pola base di `aliases.cjs`/`tsconfig.json` — Vite & TypeScript memilih pola pertama yang match.
 - Import relatif lintas modul **dilarang**.
 
 ### 1.6 Dependency Policy (library/package)
@@ -122,6 +123,15 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 3. Ukuran chunk tidak membengkak tanpa alasan (diff sebelum/sesudah).
 
 **Governance (diskusi lead dev):** lisensi (GPL/AGPL), ukuran bundle, status maintenance, hasil `npm audit`, dukungan React 19, format ESM/tree-shakeable, dan side-effect global.
+
+### 1.7 Generated Loader Map
+
+- `web-container/src/bootstrap/moduleLoaders.generated.ts` **di-generate** oleh `scripts/generate-module-loaders.mjs` dari `web-modules/modules/*/package.json` (field `name`).
+- File generated **wajib** di-commit dan **dilarang** diedit manual; regenerate via `npm run gen:modules` (otomatis lewat pre-hooks `predev:client-a`, `pretypecheck`, `pretest`, `prebuild:client-a`).
+- Konvensi nama: folder = nama di `config.modules` = suffix `name` package (`@arsi/module-<folder>`); mismatch membuat script gagal.
+- `discover.ts` hanya mengonsumsi map — menambah modul **tidak** mengubah `discover.ts`, `aliases.cjs`, atau `tsconfig.json`.
+- Sync test (`moduleLoaders.generated.test.ts`) **wajib** lulus — menjamin file generated tidak stale.
+- Dev server perlu restart setelah menambah modul (loader map statis, bukan glob).
 
 ---
 
@@ -1208,11 +1218,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.5.0
+**Document version**: 0.6.0
 **Last updated**: 2026-09-25
 
 **Changelog:**
 
+- **0.6.0** — Generated Loader Map (§1.7): map entry di-generate dari `package.json` name, alias wildcard (§1.5), sync test, pre-hooks; menambah modul tidak menyentuh `discover.ts`/alias/tsconfig.
 - **0.5.0** — Dependency Policy (§1.6): kepemilikan package, aturan peer/dedupe, larangan duplikasi kapabilitas container, aturan CSS/Tailwind, Docker `check:dockerfile`, dan verifikasi duplikat bundle.
 - **0.4.0** — Event container → module (`containerEvents` / `ContainerSearchPayload`), global search di Topbar sebagai sample; aturan di §13.
 - **0.3.0** — Notification service (`deps.notifications` / `useNotifications`) + bell header container; aturan di §7.4.

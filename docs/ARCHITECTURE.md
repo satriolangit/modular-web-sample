@@ -971,20 +971,19 @@ events.emit("client-a.audit.requested", { userId });
 
 ### 15.1 Alias Convention
 
-| Alias                                | Resolve ke                                      |
-| ------------------------------------ | ----------------------------------------------- |
-| `@arsi/container`                    | `web-container/src/public`                      |
-| `@arsi/shared`                       | `web-modules/shared`                            |
-| `@arsi/module-user-management`       | `web-modules/modules/user-management/public.ts` |
-| `@arsi/module-user-management/entry` | `web-modules/modules/user-management/index.ts`  |
-| `@arsi/extension`                    | `web-container/current-client/src`              |
+| Alias                              | Resolve ke                                      |
+| ---------------------------------- | ----------------------------------------------- |
+| `@arsi/container`                  | `web-container/src/public`                      |
+| `@arsi/shared`                     | `web-modules/shared`                            |
+| `@arsi/module-*` (wildcard)        | `web-modules/modules/*/public.ts` (extension)   |
+| `@arsi/module-*/entry` (wildcard)  | `web-modules/modules/*/index.tsx` (container)   |
+| `@arsi/extension`                  | `web-container/current-client/src`              |
 
-### 15.2 Kenapa Dua Alias untuk Modul
+### 15.2 Wildcard Alias + Generated Loader Map
 
-- `@arsi/module-<name>` → `public.ts` (kontrak, untuk extension)
-- `@arsi/module-<name>/entry` → `index.ts` (entry, untuk container)
-
-Ini memisahkan "apa yang boleh dipakai extension" vs "apa yang container butuh untuk boot".
+- `@arsi/module-<name>` → `public.ts` (kontrak, untuk extension) — wildcard, tidak perlu ditambah per modul.
+- `@arsi/module-<name>/entry` → `index.tsx` (entry container) — dipakai **hanya** oleh `moduleLoaders.generated.ts` yang di-generate dari `package.json` `name`.
+- Pola `/entry` wajib di atas pola base (Vite & TypeScript memilih pola pertama yang match).
 
 ### 15.3 Single Source of Truth
 
@@ -1238,13 +1237,12 @@ npm run dev:client-b
 
 ### 19.3 Tambah Modul Baru
 
-1. Buat folder di `web-modules/modules/<name>/`.
-2. Buat `package.json`, `index.ts`, `public.ts`.
+1. Buat folder di `web-modules/modules/<name>/` (nama folder = nama di `config.modules`).
+2. Buat `package.json` (name `@arsi/module-<folder>`), `index.tsx` (default export `init(deps)`), `public.ts`.
 3. Buat `routes/`, `services/`, `hooks/`, `components/`, `slots.ts`, `queryKeys.ts`, `i18n/`.
-4. Register di `web-container/src/bootstrap/discover.ts`.
-5. Tambah alias di `aliases.cjs` (3 repo).
-6. Tambah alias di `tsconfig.json` (3 repo).
-7. Tambah ke `config.modules` di environment yang butuh.
+4. Jalankan `npm run gen:modules` di web-container (otomatis via pre-hooks) — loader map di-generate dari `package.json` name; **tidak ada** edit `discover.ts`/alias/tsconfig.
+5. Tambah `COPY web-modules/modules/<name>/package.json ...` di Dockerfile + `npm run check:dockerfile`.
+6. Tambah ke `config.modules` (dev: `public/config.json`; produksi dikelola CI).
 
 ### 19.4 Tambah Client Baru
 

@@ -21,6 +21,8 @@
 
 Kesimpulan: perbedaan sesungguhnya ada di **DX/maintenance**, bukan di bundle/performance. Angka presisi ada di §8.
 
+> **Update:** sejak branch `feat/module-loaders-codegen`, tersedia **varian ketiga** — manual wiring dengan loader map yang di-generate dari `package.json` name (tetap static/lazy, bukan glob). Varian ini menghilangkan edit `discover.ts`/alias/tsconfig tanpa kehilangan tsc coverage — lihat §2b.
+
 ---
 
 ## 2. Mekanisme
@@ -36,6 +38,21 @@ Kesimpulan: perbedaan sesungguhnya ada di **DX/maintenance**, bukan di bundle/pe
 | Konvensi | Eksplisit (daftar manual) | Folder `modules/<name>/index.tsx` = nama di `config.modules` |
 
 ---
+
+### 2b. Varian Ketiga: Manual + Codegen (generated loader map)
+
+Branch `feat/module-loaders-codegen`. Loader map `src/bootstrap/moduleLoaders.generated.ts` di-generate dari `web-modules/modules/*/package.json` (`name`) via `npm run gen:modules` (otomatis lewat pre-hooks) + sync test; alias/tsconfig memakai wildcard satu kali.
+
+| Aspek | Manual lama | Manual + codegen | Auto (glob) |
+| --- | --- | --- | --- |
+| Edit container per modul | 7 file / 10 titik | **2 file** (Dockerfile + config.json) | 0 |
+| Sumber map | tulis tangan | generated (committed) | implicit glob |
+| tsc coverage source modul | ✅ | ✅ (import statis) | ❌ |
+| Langkah tambahan | — | `gen:modules` (pre-hooks) | — |
+| Prasyarat infra | — | — | BuildKit ≥1.7 |
+| Risiko stale | — | ada → sync test | — |
+| Dev: tambah modul | edit + restart | `gen:modules` + restart | terdeteksi tanpa restart |
+| Bundle | baseline | ≈ baseline (kode map setara) | +100 B gzip |
 
 ## 3. Frekuensi Modifikasi `web-container`
 
@@ -98,7 +115,7 @@ Baseline manual (3 modul, sebelum pengukuran formal): total 884 KB raw / ~279 KB
 
 1. **Banyak modul + tim paralel** → auto-discovery arah yang benar; dua gap ditutup dengan: (a) `web-modules` typecheck sebagai gate CI wajib, (b) BuildKit (sudah tersedia di `ubuntu-latest`).
 2. **Baseline stabil** → manual (eksplisit, tanpa prasyarat, tsc coverage ganda) untuk `main` saat ini.
-3. Dua versi dipertahankan: `main` = manual; `feat/zero-edit-module-discovery` = kandidat auto. `module-sample` tersedia di keduanya.
+3. Tiga varian yang tersedia: `main` = manual klasik; `feat/module-loaders-codegen` = manual + generated loader map (kompromi: nol edit discover/alias/tsconfig, tsc coverage terjaga); `feat/zero-edit-module-discovery` = auto glob (nol edit, tanpa tsc coverage, butuh BuildKit). `module-sample` tersedia di ketiganya.
 
 ---
 

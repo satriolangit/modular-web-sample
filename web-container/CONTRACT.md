@@ -73,26 +73,65 @@ Setiap layer expose hanya lewat file tertentu:
 | Container                      | `src/public/index.ts`                                           |
 | Shared                         | `shared/index.ts`                                               |
 | Module                         | `modules/<name>/public.ts`                                      |
-| Module entry (untuk container) | `modules/<name>/index.ts` via alias `@arsi/module-<name>/entry` |
+| Module entry (untuk container) | `modules/<name>/index.tsx` via generated loader map (`src/bootstrap/moduleLoaders.generated.ts`) |
 | Extension                      | `src/index.tsx` (hanya default export `init(deps)`)             |
 
 Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 
 ### 1.5 Alias
 
-| Alias                       | Resolve ke                             | Untuk siapa       |
-| --------------------------- | -------------------------------------- | ----------------- |
-| `@arsi/container`           | `web-container/src/public`             | Modul & extension |
-| `@arsi/shared`              | `web-modules/shared`                   | Modul & extension |
-| `@arsi/module-<name>`       | `web-modules/modules/<name>/public.ts` | Extension         |
-| `@arsi/module-<name>/entry` | `web-modules/modules/<name>/index.ts`  | Container         |
-| `@arsi/extension`           | `web-container/current-client/src`     | Container         |
+| Alias                              | Resolve ke                             | Untuk siapa       |
+| ---------------------------------- | -------------------------------------- | ----------------- |
+| `@arsi/container`                  | `web-container/src/public`             | Modul & extension |
+| `@arsi/shared`                     | `web-modules/shared`                   | Modul & extension |
+| `@arsi/module-<name>` (wildcard)   | `web-modules/modules/<name>/public.ts` | Extension         |
+| `@arsi/module-<name>/entry` (wildcard) | `web-modules/modules/<name>/index.tsx` | Container (generated loader map) |
+| `@arsi/extension`                  | `web-container/current-client/src`     | Container         |
 
 **Aturan:**
 
-- Extension **wajib** pakai `@arsi/module-<name>`, bukan `/entry`.
-- Container **wajib** pakai `@arsi/module-<name>/entry`, bukan base.
+- Extension **wajib** pakai `@arsi/module-<name>` (public API).
+- Container memakai `@arsi/module-<name>/entry` **hanya** dari file generated; menambah alias/paths per modul **dilarang**.
+- Pola `/entry` **wajib** di atas pola base di `aliases.cjs`/`tsconfig.json` — Vite & TypeScript memilih pola pertama yang match.
 - Import relatif lintas modul **dilarang**.
+
+### 1.6 Dependency Policy (library/package)
+
+**Kepemilikan package** — install di repo pemiliknya; container **tidak** meng-install dependency modul/extension (Vite me-resolve dari tree asal file).
+
+| Package dipakai oleh | Install di | Contoh |
+| --- | --- | --- |
+| Container/shell saja | `web-container` | radix dialog, sonner |
+| UI kit (modul + extension) | `web-modules/shared` | radix, lucide, CVA |
+| Fitur modul | `web-modules` workspace | `cd web-modules && npm install <pkg> -w @arsi/module-<name>` |
+| Khusus client | `web-extension-<client>` | axios, react-router-dom |
+
+**Aturan keras:**
+
+- `react`/`react-dom` **wajib** `peerDependencies`; dilarang jadi `dependencies` di shared/modul/extension.
+- Library yang di-import lebih dari satu tree (container ↔ modul/extension) **wajib** masuk `resolve.dedupe` di `web-container/vite.config.ts`; versi disamakan (sumber versi = container).
+- Library berbasis React context/singleton (router, form, theme, query, state) **wajib** single copy.
+- Dilarang menambah library yang menduplikasi kapabilitas container: toast, modal, notifikasi, i18n, React Query, HTTP client, event bus.
+- Modul/extension **dilarang** punya Tailwind/PostCSS config; plugin Tailwind hanya di `shared/tailwind.preset.cjs`.
+- Global CSS dari library **dilarang** di-import dari modul; import hanya di `web-container/src/styles/globals.css`.
+- Workspace package baru (modul) → tambah `COPY <package.json>` di `web-container/Dockerfile` dan jalankan `npm run check:dockerfile`; lockfile **wajib** di-commit.
+
+**Verifikasi wajib saat menambah dependency:**
+
+1. `typecheck` + `lint` + `test` + `build:client-a` lulus (semua package terdampak).
+2. Tidak ada duplikat di bundle: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` → 1 root.
+3. Ukuran chunk tidak membengkak tanpa alasan (diff sebelum/sesudah).
+
+**Governance (diskusi lead dev):** lisensi (GPL/AGPL), ukuran bundle, status maintenance, hasil `npm audit`, dukungan React 19, format ESM/tree-shakeable, dan side-effect global.
+
+### 1.7 Generated Loader Map
+
+- `web-container/src/bootstrap/moduleLoaders.generated.ts` **di-generate** oleh `scripts/generate-module-loaders.mjs` dari `web-modules/modules/*/package.json` (field `name`).
+- File generated **wajib** di-commit dan **dilarang** diedit manual; regenerate via `npm run gen:modules` (otomatis lewat pre-hooks `predev:client-a`, `pretypecheck`, `pretest`, `prebuild:client-a`).
+- Konvensi nama: folder = nama di `config.modules` = suffix `name` package (`@arsi/module-<folder>`); mismatch membuat script gagal.
+- `discover.ts` hanya mengonsumsi map — menambah modul **tidak** mengubah `discover.ts`, `aliases.cjs`, atau `tsconfig.json`.
+- Sync test (`moduleLoaders.generated.test.ts`) **wajib** lulus — menjamin file generated tidak stale.
+- Dev server perlu restart setelah menambah modul (loader map statis, bukan glob).
 
 ---
 
@@ -125,6 +164,7 @@ deps = {
   queryClient, // TanStack QueryClient
   toast, // Toast service
   modal, // Modal service
+  notifications, // Notification service (bell header)
   slots, // Slot registry
   routes, // Route registry
   menu, // Menu registry
@@ -164,6 +204,7 @@ import {
   // UI
   useToast,
   useModal,
+  useNotifications,
   useSlot,
 
   // Auth
@@ -668,6 +709,38 @@ Modul boleh pakai `toast.custom()` untuk render komponen sendiri. Tidak perlu re
 - Extension **boleh** override dengan `toast.custom()`.
 - Pesan toast **wajib** pakai i18n, bukan hardcode.
 
+### 7.4 Notifikasi (Bell Header)
+
+Notifikasi persisten (bell di Topbar container). Module/extension **mendorong** notifikasi; container merender.
+
+```ts
+// Di init (non-React)
+deps.notifications.push({ title: '...', message: '...', variant: 'info', source: 'user-management' });
+
+// Di component
+const { push, notifications, unreadCount } = useNotifications();
+push({ title: t('notifications.sample.title'), variant: 'success', source: 'client-a' });
+```
+
+Bentuk data:
+
+```ts
+interface NotificationInput {
+  title: string;                                  // wajib
+  message?: string;
+  variant?: 'info' | 'success' | 'warning' | 'error'; // default 'info'
+  source?: string;                                // '<module>' | '<client>' | 'container'
+}
+```
+
+Aturan:
+
+- Notifikasi **wajib** pakai `deps.notifications` atau `useNotifications`, bukan store/event buatan sendiri.
+- `source` **wajib** diisi namespace module/extension agar asal notifikasi jelas di panel.
+- Judul/pesan **wajib** i18n (namespace module/extension sendiri).
+- Daftar in-memory, maksimum 50 item terbaru; backend/websocket cukup memanggil `push` (tidak mengubah UI).
+- Container **tidak boleh** import `@arsi/shared`; bell memakai token styling container.
+
 ---
 
 ## 8. Modal — Dialog
@@ -741,6 +814,7 @@ Komponen otomatis masuk ke `components/ui/`.
 - Modul **tidak boleh** import shadcn-ui langsung dari `components/ui/...`.
 - Extension **wajib** pakai komponen dari `@arsi/shared`.
 - Kalau butuh komponen baru, **tambahkan ke shared**, bukan buat di modul.
+- Container **tidak boleh** import `@arsi/shared` — container self-contained (di-enforce ESLint `no-restricted-imports`). Styling shell container memakai utility token langsung.
 
 **Pengecualian:** komponen yang sangat spesifik modul (misal `UserTable`) boleh di modul.
 
@@ -772,6 +846,32 @@ content: [
 - Modul **tidak boleh** define Tailwind config sendiri.
 - Extension **tidak boleh** define Tailwind config sendiri.
 - Kalau butuh utility baru, tambahkan ke preset shared.
+
+### 10.4 Brand Token — ARSI Purple
+
+Brand color: **`#551AB9`** (deep/royal purple). Nilai token hanya boleh diubah di `globals.css`.
+
+| Peran                           | Light     | Dark      |
+| ------------------------------- | --------- | --------- |
+| Primary (aksi/aktif/fokus)      | `#551AB9` | `#A78BFA` |
+| Primary hover                   | `#3D0F8A` | `#B9A5FC` |
+| Primary light (aksen)           | `#8B5CF6` | `#A78BFA` |
+| Accent (hover/selected surface) | `#F3EEFC` | `#2A2340` |
+| Background                      | `#F8F9FB` | `#13111C` |
+| Surface (card/popover)          | `#FFFFFF` | `#1E1B2E` |
+| Border                          | `#E5E7EB` | `#2D2A3D` |
+| Text primary / secondary        | `#1F2937` / `#6B7280` | `#F3F4F6` / `#9CA3AF` |
+| Success / Warning / Info / Danger | `#16A34A` / `#F59E0B` / `#0EA5E9` / `#DC2626` | idem |
+
+Aturan pakai:
+
+- Token semantik punya varian `-strong` (`text-success-strong`, dst): lebih gelap di light, lebih terang di dark — utility class sama, otomatis benar di dua tema.
+- Badge status memakai pola tint: `bg-success/10 text-success-strong border-success/20`.
+- Hindari `text-muted-foreground` di atas `bg-muted` (kontras marginal 4.39:1).
+- Focus visible: `ring-2 ring-ring ring-offset-2 ring-offset-background`.
+- Jangan pakai utility `dark:` di app source — tema hanya lewat token yang flip.
+- Font: Plus Jakarta Sans (self-host `@fontsource-variable/plus-jakarta-sans`, di-import dari `globals.css`).
+- Kontras & palet dijaga test `web-container/src/styles/tokens.test.ts` (palet ±1 channel + 21 pasangan WCAG).
 
 ---
 
@@ -876,12 +976,28 @@ deps.events.on("user-management.user.updated", (payload) => {
 deps.events.emit("user-management.user.updated", { id: 1 });
 ```
 
+Container → module (contoh: global search di Topbar):
+
+```ts
+// Container component
+const events = useEventBus();
+events.emit("container.search.changed", { query: "phone" });
+
+// Module init
+deps.events.on<ContainerSearchPayload>(containerEvents.searchChanged, ({ query }) => {
+  useProductStore.getState().setSearch(query);
+});
+```
+
+Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-export dari `@arsi/container`.
+
 ### 13.2 Naming Convention
 
-| Layer     | Format                       | Contoh                         |
-| --------- | ---------------------------- | ------------------------------ |
-| Modul     | `<module>.<entity>.<action>` | `user-management.user.updated` |
-| Extension | `<client>.<entity>.<action>` | `client-a.audit.requested`     |
+| Layer     | Format                         | Contoh                         |
+| --------- | ------------------------------ | ------------------------------ |
+| Container | `container.<entity>.<action>`  | `container.search.changed`     |
+| Modul     | `<module>.<entity>.<action>`   | `user-management.user.updated` |
+| Extension | `<client>.<entity>.<action>`   | `client-a.audit.requested`     |
 
 ### 13.3 Aturan
 
@@ -889,6 +1005,8 @@ deps.events.emit("user-management.user.updated", { id: 1 });
 - Modul **boleh** emit event yang tidak ada listener.
 - Extension **boleh** listen event modul.
 - Modul **tidak boleh** listen event extension.
+- Container **boleh** emit event; modul/extension **boleh** listen event container.
+- Container **tidak boleh** listen event modul/extension (base tidak depend ke atas).
 - Base **tidak boleh** depend ke event extension.
 - Event listener **wajib** register di `init(deps)`, bukan di top-level module.
 
@@ -1100,11 +1218,16 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.1.0
-**Last updated**: 2026-09-24
+**Document version**: 0.6.0
+**Last updated**: 2026-09-25
 
 **Changelog:**
 
+- **0.6.0** — Generated Loader Map (§1.7): map entry di-generate dari `package.json` name, alias wildcard (§1.5), sync test, pre-hooks; menambah modul tidak menyentuh `discover.ts`/alias/tsconfig.
+- **0.5.0** — Dependency Policy (§1.6): kepemilikan package, aturan peer/dedupe, larangan duplikasi kapabilitas container, aturan CSS/Tailwind, Docker `check:dockerfile`, dan verifikasi duplikat bundle.
+- **0.4.0** — Event container → module (`containerEvents` / `ContainerSearchPayload`), global search di Topbar sebagai sample; aturan di §13.
+- **0.3.0** — Notification service (`deps.notifications` / `useNotifications`) + bell header container; aturan di §7.4.
+- **0.2.0** — Brand token ARSI Purple (`#551AB9`) untuk light+dark, token semantik (`success`/`warning`/`info` + varian `-strong`), font Plus Jakarta Sans self-hosted, komponen `Card` di shared, dan aturan container self-contained (tanpa import `@arsi/shared`) di §9.4/§10.4.
 - **0.1.0** — Initial contract. Mencakup 20 section: layer rules, access patterns, state management (Zustand), service registry, data fetching (Axios + React Query), i18n, toast, modal, UI kit, Tailwind, slots, routes, events, configuration, naming conventions, versioning, testing, observability, governance, dan review checklist.
 
 ---

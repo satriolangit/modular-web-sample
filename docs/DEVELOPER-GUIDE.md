@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.6.1
+**Version**: 0.7.0
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -152,7 +152,7 @@ Studi kasus: `order-management`. Salin struktur dari `web-modules/modules/produc
 9. `i18n/en.json` + `i18n/id.json`
 10. `index.tsx` — `init(deps)`
 11. `public.ts` — kontrak
-12. Wiring container (4 file) + web-modules (2 file) + Dockerfile (COPY package.json)
+12. Wiring: loader map di-generate otomatis (`npm run gen:modules`); tambah COPY di Dockerfile + entri `config.json`
 13. Tests
 14. Verifikasi
 
@@ -498,28 +498,24 @@ export type { Order, OrderListResponse } from './types';
 
 Apa pun yang **tidak** diekspor di sini dianggap internal — extension dilarang mengaksesnya.
 
-### 3.12 Wiring — 7 file (jangan ada yang terlewat)
+### 3.12 Wiring — 2 file (loader map otomatis)
+
+Loader map `web-container/src/bootstrap/moduleLoaders.generated.ts` **di-generate** dari `web-modules/modules/*/package.json` (field `name`) oleh `npm run gen:modules`. Menambah modul **tidak** mengubah `discover.ts`, alias, atau tsconfig.
 
 | File | Yang ditambahkan |
 | --- | --- |
-| `web-container/aliases.cjs` | alias `@arsi/module-order-management/entry` (**WAJIB di atas** alias base) dan `@arsi/module-order-management` |
-| `web-container/tsconfig.json` | 2 paths dengan nama yang sama |
-| `web-container/src/bootstrap/discover.ts` | `'order-management': () => import('@arsi/module-order-management/entry')` |
-| `web-container/public/config.json` | `"modules": [..., "order-management"]` |
-| `web-modules/aliases.cjs` | alias (untuk vitest repo web-modules) |
-| `web-modules/tsconfig.json` | paths (untuk typecheck repo web-modules) |
-| `web-container/Dockerfile` | `COPY web-modules/modules/order-management/package.json ...` sebelum `npm ci` (+ `npm run check:dockerfile`) |
+| `web-container/Dockerfile` | `COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/` sebelum `npm ci` (+ `npm run check:dockerfile`) |
+| `web-container/public/config.json` | `"modules": [..., "order-management"]` (dev; produksi dikelola CI) |
 
-```js
-// web-container/aliases.cjs — urutan penting!
-module.exports = {
-  '@arsi/module-order-management/entry': path.join(workspaceRoot, 'web-modules', 'modules', 'order-management', 'index.tsx'),
-  '@arsi/module-order-management': path.join(workspaceRoot, 'web-modules', 'modules', 'order-management', 'public.ts'),
-  // ...alias lain
-};
+```bash
+cd web-modules && npm install                 # lockfile workspace
+cd ../web-container && npm run gen:modules    # regenerate loader map
 ```
 
-Kenapa urutan penting: Vite mencocokkan alias sebagai prefix. Kalau alias base di atas, `@arsi/module-order-management/entry` akan menjadi `.../public.ts/entry` → error `ENOTDIR`.
+- `gen:modules` otomatis lewat pre-hooks: `predev:client-a`, `pretypecheck`, `pretest`, `prebuild:client-a`.
+- Sync test `moduleLoaders.generated.test.ts` gagal bila file generated stale.
+- Konvensi: nama folder = nama di `config.modules` = suffix `name` package (`@arsi/module-<folder>`); mismatch → script gagal.
+- Alias wildcard `@arsi/module-*` dan `@arsi/module-*/entry` sudah tersedia; **pola `/entry` wajib di atas pola base** (Vite & TS memilih pola pertama yang match).
 
 ### 3.13 Tests
 
@@ -543,6 +539,8 @@ cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile
 cd ../web-container && npm run dev:client-a
 # buka http://localhost:5173 → menu Orders muncul, halaman render
 ```
+
+`gen:modules` berjalan otomatis lewat pre-hooks di atas; jalankan manual setelah mengubah daftar modul. Dev server perlu restart setelah menambah modul (loader map statis).
 
 ### 3.15 Menambah dependency (library/package)
 
@@ -882,6 +880,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Duplikat paket di bundle / chunk membengkak | Library di-import lintas tree tanpa dedupe. Cek `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map`; tambahkan ke `resolve.dedupe` + samakan versi (CONTRACT §1.6). |
 | `Invalid hook call` / `useNavigate() may be used only in the context of a <Router>` | Ada dua salinan React atau React Router di bundle. Tambahkan library ke `resolve.dedupe` di `vite.config.ts` + `vitest.config.ts`. |
 | Docker build gagal setelah tambah modul/dependency | `package.json` modul belum di-COPY atau lockfile belum di-commit. Jalankan `cd web-container && npm run check:dockerfile`. |
+| Modul baru tidak ter-load (loader map) | File generated stale atau nama package tidak sesuai konvensi. Jalankan `cd web-container && npm run gen:modules`; sync test akan gagal di CI bila lupa. |
 | Error "Option 'baseUrl' is deprecated" (TS 6+) | tsconfig memakai `baseUrl`. Hapus `baseUrl`, pertahankan `paths` (relatif ke tsconfig, didukung sejak TS 4.1; TS 7 menghapus `baseUrl`). |
 
 ---
@@ -948,6 +947,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Registry container (slot/route/menu/modal/event) | `web-container/src/{slots,routes,menu,modal,events}/` |
 | Bootstrap & discovery | `web-container/src/bootstrap/` |
 | Shared UI kit | `web-modules/shared/` |
+| Reference module (demo semua dependency container: api, apiRegistry, query, zustand, toast, modal, notifications, events, slots, i18n, logger) | `web-modules/modules/module-sample/` |
 | Global search Topbar → event container → filter module | `web-container/src/layout/GlobalSearch.tsx`, `web-container/src/events/containerEvents.ts`, `product-management/events/containerSearch.ts` |
 | Notifikasi bell (module/extension → container) | `web-container/src/notifications/`, `user-management/components/SendNotificationButton.tsx`, `web-extension-client-a/src/components/AuditButton.tsx` |
 | Test palet & kontras token | `web-container/src/styles/tokens.test.ts` |
@@ -980,5 +980,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.6.1
+**Document version**: 0.7.0
 **Last updated**: 2026-09-25
