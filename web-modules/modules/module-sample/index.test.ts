@@ -88,7 +88,7 @@ describe('module-sample init', () => {
     expect(menu.register).toHaveBeenCalledWith(
       expect.objectContaining({ path: '/module-sample', order: 30 }),
     );
-    expect(routes.add).toHaveBeenCalledTimes(12);
+    expect(routes.add).toHaveBeenCalledTimes(13);
     expect(routes.add).toHaveBeenCalledWith(
       expect.objectContaining({ path: '/module-sample/query' }),
     );
@@ -105,6 +105,6 @@ describe('module-sample init', () => {
 
     expect(apiRegistry.register).toHaveBeenCalledTimes(1);
     expect(menu.register).toHaveBeenCalledTimes(1);
-    expect(routes.add).toHaveBeenCalledTimes(12);
+    expect(routes.add).toHaveBeenCalledTimes(13);
   });
 });

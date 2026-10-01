@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { SampleApiPage } from './SampleApiPage';
 import { SampleApiRegistryPage } from './SampleApiRegistryPage';
 import { SampleEventsPage } from './SampleEventsPage';
+import { SampleExtensionPage } from './SampleExtensionPage';
 import { SampleI18nPage } from './SampleI18nPage';
 import { SampleLoggerPage } from './SampleLoggerPage';
 import { SampleModalPage } from './SampleModalPage';
@@ -85,5 +86,11 @@ export const samplePages: SamplePageDefinition[] = [
     labelKey: 'nav.logger',
     descriptionKey: 'navDesc.logger',
     element: <SampleLoggerPage />,
+  },
+  {
+    path: '/module-sample/extension-points',
+    labelKey: 'nav.extension',
+    descriptionKey: 'navDesc.extension',
+    element: <SampleExtensionPage />,
   },
 ];

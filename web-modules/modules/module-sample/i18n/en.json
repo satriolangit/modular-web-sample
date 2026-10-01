@@ -31,7 +31,8 @@
     "events": "Events",
     "slots": "Slots",
     "i18n": "i18n",
-    "logger": "Logger"
+    "logger": "Logger",
+    "extension": "Extension points"
   },
   "navDesc": {
     "api": "Default axios instance (deps.api / useApi)",
@@ -44,7 +45,8 @@
     "events": "Event bus: module events + container events",
     "slots": "Extension point with useSlot",
     "i18n": "Translations with useTranslation",
-    "logger": "Structured logging with useLogger"
+    "logger": "Structured logging with useLogger",
+    "extension": "Slot, route override, and service wrapper demos"
   },
   "api": {
     "title": "deps.api",
@@ -141,5 +143,29 @@
     "warn": "Log warn",
     "error": "Log error",
     "logged": "Last log: {{level}} — {{message}}"
+  },
+  "extension": {
+    "title": "Extension points",
+    "description": "How an extension overrides this module — from the lightest tier to the heaviest.",
+    "tiers": {
+      "slot": {
+        "title": "Tier 1 — Slot",
+        "description": "Extension fills sampleSlots.overviewPanel without touching the module."
+      },
+      "route": {
+        "title": "Tier 2 — Route override",
+        "description": "Extension replaces this page via deps.routes.override('/module-sample/extension-points')."
+      },
+      "service": {
+        "title": "Tier 3 — Service wrapper",
+        "description": "Extension wraps createSampleService(apiRegistry.get('module-sample')) with its own rules."
+      }
+    },
+    "slotTitle": "Slot preview ({{name}})",
+    "slotFilled": "Filled by extension",
+    "slotEmpty": "Not filled yet",
+    "serviceTitle": "Module service",
+    "serviceBase": "baseURL: {{baseUrl}}",
+    "serviceResult": "getUser(1): {{name}}"
   }
 }

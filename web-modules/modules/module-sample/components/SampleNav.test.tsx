@@ -34,6 +34,6 @@ describe('SampleNav', () => {
 
     expect(screen.getByText('nav.api')).toBeInTheDocument();
     expect(screen.getByText('nav.logger')).toBeInTheDocument();
-    expect(screen.getAllByRole('link')).toHaveLength(11);
+    expect(screen.getAllByRole('link')).toHaveLength(12);
   });
 });

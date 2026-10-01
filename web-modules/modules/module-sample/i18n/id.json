@@ -31,7 +31,8 @@
     "events": "Event",
     "slots": "Slot",
     "i18n": "i18n",
-    "logger": "Logger"
+    "logger": "Logger",
+    "extension": "Extension point"
   },
   "navDesc": {
     "api": "Instance axios default (deps.api / useApi)",
@@ -44,7 +45,8 @@
     "events": "Event bus: event modul + event container",
     "slots": "Extension point dengan useSlot",
     "i18n": "Terjemahan dengan useTranslation",
-    "logger": "Logging terstruktur dengan useLogger"
+    "logger": "Logging terstruktur dengan useLogger",
+    "extension": "Demo slot, route override, dan service wrapper"
   },
   "api": {
     "title": "deps.api",
@@ -141,5 +143,29 @@
     "warn": "Log warn",
     "error": "Log error",
     "logged": "Log terakhir: {{level}} — {{message}}"
+  },
+  "extension": {
+    "title": "Extension point",
+    "description": "Cara extension meng-override modul ini — dari tingkat paling ringan ke paling berat.",
+    "tiers": {
+      "slot": {
+        "title": "Tier 1 — Slot",
+        "description": "Extension mengisi sampleSlots.overviewPanel tanpa mengubah modul."
+      },
+      "route": {
+        "title": "Tier 2 — Route override",
+        "description": "Extension mengganti halaman ini via deps.routes.override('/module-sample/extension-points')."
+      },
+      "service": {
+        "title": "Tier 3 — Service wrapper",
+        "description": "Extension membungkus createSampleService(apiRegistry.get('module-sample')) dengan aturannya sendiri."
+      }
+    },
+    "slotTitle": "Pratinjau slot ({{name}})",
+    "slotFilled": "Diisi extension",
+    "slotEmpty": "Belum diisi",
+    "serviceTitle": "Service modul",
+    "serviceBase": "baseURL: {{baseUrl}}",
+    "serviceResult": "getUser(1): {{name}}"
   }
 }
