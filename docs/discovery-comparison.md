@@ -104,11 +104,61 @@ Baseline manual (3 modul, sebelum pengukuran formal): total 884 KB raw / ~279 KB
 
 ## 8. Hasil Pengukuran
 
-_(diisi setelah pengukuran presisi — commit berikutnya)_
+Dijalankan 2026-09-25 pada branch manual `feat/module-sample-main` dan auto `feat/module-sample` (3 modul aktif: user-management, product-management, module-sample). Artefak build: `dist/manual` dan `dist/auto`.
 
 ### 8.1 Metodologi
 
-- Build terpisah per versi: `vite build --outDir dist/manual` (branch `feat/module-sample-main`) dan `dist/auto` (branch `feat/module-sample`), masing-masing 3 run; dilaporkan semua + median.
-- Metrik bundle: total JS raw & gzip, jumlah chunk, ukuran main chunk (terbesar), ukuran chunk `module-sample` (dicari via marker `module-sample.sample.postCreated`), delta main chunk antar versi (proxy footprint kode discovery).
-- Dev server: uji deteksi file modul baru tanpa restart (auto) dengan probe file `modules/glob-probe/index.tsx` dan request ulang modul transform `moduleLoaders.ts`.
-- Runtime: mikro-benchmark konstruksi map loader (loop `createModuleLoaders`) sebagai proxy overhead boot; load modul itu sendiri didominasi dynamic import yang identik di kedua versi.
+- Build terpisah per versi: `vite build --outDir dist/manual` / `dist/auto`, masing-masing 3 run; dilaporkan semua + median.
+- Metrik bundle: total JS raw & gzip, jumlah chunk, ukuran main chunk (terbesar), ukuran chunk `module-sample` (via marker `module-sample.sample.postCreated`), delta main chunk antar versi (proxy footprint kode discovery).
+- Dev server: uji deteksi file modul baru tanpa restart (auto) dengan probe `modules/glob-probe/index.tsx` dan request ulang modul transform `moduleLoaders.ts`.
+- Runtime: mikro-benchmark konstruksi map loader (`createModuleLoaders`) sebagai proxy overhead boot.
+
+### 8.2 Build time (wall-clock, 3 run)
+
+| Run | Manual | Auto |
+| --- | --- | --- |
+| 1 (dingin) | 3,80 s | 3,62 s |
+| 2 | 3,01 s | 3,19 s |
+| 3 | 2,83 s | 2,85 s |
+| **Median** | **3,01 s** | **3,19 s** |
+| Vite internal (run 3) | 2,44 s | 2,46 s |
+
+Selisih median 0,18 s (6%) masih dalam noise run-to-run; Vite internal hanya +0,02 s. **Tidak signifikan.**
+
+### 8.3 Bundle size (presisi byte)
+
+| Metrik | Manual | Auto | Delta |
+| --- | --- | --- | --- |
+| Jumlah chunk JS | 12 | 12 | 0 |
+| Total JS raw | 876.238 B | 876.608 B | **+370 B (+0,04%)** |
+| Total JS gzip | 282.436 B | 282.536 B | **+100 B (+0,035%)** |
+| Main chunk raw | 539.175 B | 539.540 B | +365 B |
+| Main chunk gzip | 173.441 B | 173.554 B | +113 B |
+| Chunk `module-sample` raw | 25.683 B | 25.678 B | −5 B (noise) |
+| Chunk `module-sample` gzip | 7.107 B | 7.101 B | −6 B |
+| CSS raw / gzip | 32.106 / 8.700 | 32.106 / 8.700 | 0 |
+
+Seluruh delta (+100 B gzip) berasal dari kode discovery di main chunk. **Praktis nol.**
+
+### 8.4 Dev server: deteksi file modul baru (versi auto)
+
+- Probe `web-modules/modules/glob-probe/index.tsx` dibuat saat dev server berjalan (tanpa edit file container).
+- Dalam <2 detik, transform `moduleLoaders.ts` sudah memuat `glob-probe` **tanpa restart**.
+- Kesimpulan: kekhawatiran "glob perlu restart" **tidak terbukti** di Vite 5.4 — glob di-watch secara dinamis.
+
+### 8.5 Runtime overhead (mikro-benchmark)
+
+| Jumlah entries | Konstruksi map (`createModuleLoaders`) |
+| --- | --- |
+| 3 | 0,48 µs/call |
+| 50 | 8,53 µs/call |
+
+Dijalankan sekali saat boot; tidak terukur dibanding biaya dynamic import modul itu sendiri (identik di kedua versi).
+
+### 8.6 Kesimpulan Pengukuran
+
+- **Bundle size: seri** — auto +100 B gzip (+0,035%), hanya kode discovery.
+- **Build time: seri** — perbedaan dalam noise.
+- **Runtime: seri** — keduanya lazy `import()`; overhead map auto ~sub-mikrodetik.
+- **Dev experience: auto lebih baik** — modul baru terdeteksi tanpa edit container dan tanpa restart.
+- Keputusan akhir tetap pada trade-off maintenance vs (tsc coverage + prasyarat BuildKit) di §6.
