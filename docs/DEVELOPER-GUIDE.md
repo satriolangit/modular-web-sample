@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.7.0
+**Version**: 0.7.1
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -650,6 +650,8 @@ deps.slots.register(userSlots.userTableActions, AuditButton);
 
 Komponen slot menerima props yang disepakati module (contoh: `{ user }`, `{ product }`). Satu slot hanya boleh diisi sekali.
 
+Contoh hidup: `web-extension-client-a/src/components/ClientASamplePanel.tsx` mengisi `sampleSlots.overviewPanel` milik `module-sample`.
+
 ### 4.4 Route
 
 ```ts
@@ -664,7 +666,9 @@ deps.routes.add({
 });
 ```
 
-`override` untuk path yang belum diregistrasi module akan **throw** — urutan boot menjamin module init sebelum extension, jadi pastikan path-nya benar.
+`override` untuk path yang belum diregistrasi module akan **throw** — urutan boot menjamin module init sebelum extension, jadi pastikan path-nya benar. Jangan lupa sertakan `meta` (override mengganti seluruh entry).
+
+Contoh hidup: `/module-sample/extension-points` di-override oleh client-a (`web-extension-client-a/src/components/ClientAExtensionPointsPage.tsx`).
 
 ### 4.5 Service wrapper (paling berat, pakai jika slot & route tidak cukup)
 
@@ -684,6 +688,8 @@ const wrapped = {
 ```
 
 Wrapper dipakai lewat hook milik extension sendiri; jangan mengubah instance yang diregistrasi module.
+
+Contoh hidup: `web-extension-client-a/src/hooks/useClientASample.ts` membungkus `createSampleService(apiRegistry.get('module-sample'))` (tambah suffix, blokir ID > 3, log event).
 
 ### 4.6 i18n
 
@@ -948,6 +954,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Bootstrap & discovery | `web-container/src/bootstrap/` |
 | Shared UI kit | `web-modules/shared/` |
 | Reference module (demo semua dependency container: api, apiRegistry, query, zustand, toast, modal, notifications, events, slots, i18n, logger) | `web-modules/modules/module-sample/` |
+| Extension 3 tingkat override (slot → route override → service wrapper) | `web-extension-client-a/src/index.tsx`, `components/ClientASamplePanel.tsx`, `components/ClientAExtensionPointsPage.tsx`, `hooks/useClientASample.ts`, `web-modules/modules/module-sample/pages/SampleExtensionPage.tsx` |
 | Global search Topbar → event container → filter module | `web-container/src/layout/GlobalSearch.tsx`, `web-container/src/events/containerEvents.ts`, `product-management/events/containerSearch.ts` |
 | Notifikasi bell (module/extension → container) | `web-container/src/notifications/`, `user-management/components/SendNotificationButton.tsx`, `web-extension-client-a/src/components/AuditButton.tsx` |
 | Test palet & kontras token | `web-container/src/styles/tokens.test.ts` |
@@ -980,5 +987,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.7.0
+**Document version**: 0.7.1
 **Last updated**: 2026-09-25
