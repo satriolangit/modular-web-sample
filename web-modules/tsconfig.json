@@ -18,11 +18,7 @@
     "types": ["vite/client", "node"],
     "paths": {
       "@arsi/shared": ["./shared/index.ts"],
-      "@arsi/container": ["../web-container/src/public/index.ts"],
-      "@arsi/module-user-management": ["./modules/user-management/public.ts"],
-      "@arsi/module-user-management/entry": ["./modules/user-management/index.tsx"],
-      "@arsi/module-product-management": ["./modules/product-management/public.ts"],
-      "@arsi/module-product-management/entry": ["./modules/product-management/index.tsx"]
+      "@arsi/container": ["../web-container/src/public/index.ts"]
     }
   },
   "include": ["shared", "modules", "vitest.config.ts", "vitest.setup.ts"]
