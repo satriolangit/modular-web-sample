@@ -9,6 +9,7 @@ interface ModuleEntryPoint {
 const moduleLoaders: Record<string, () => Promise<ModuleEntryPoint>> = {
   'user-management': () => import('@arsi/module-user-management/entry'),
   'product-management': () => import('@arsi/module-product-management/entry'),
+  'module-sample': () => import('@arsi/module-module-sample/entry'),
 };
 
 const extensionLoader = (): Promise<ModuleEntryPoint> => import('@arsi/extension');

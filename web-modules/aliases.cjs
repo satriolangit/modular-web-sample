@@ -27,6 +27,18 @@ module.exports = {
     'product-management',
     'public.ts',
   ),
+  '@arsi/module-module-sample/entry': path.join(
+    __dirname,
+    'modules',
+    'module-sample',
+    'index.tsx',
+  ),
+  '@arsi/module-module-sample': path.join(
+    __dirname,
+    'modules',
+    'module-sample',
+    'public.ts',
+  ),
   '@arsi/container': path.join(workspaceRoot, 'web-container', 'src', 'public', 'index.ts'),
   '@arsi/shared': path.join(__dirname, 'shared', 'index.ts'),
 };

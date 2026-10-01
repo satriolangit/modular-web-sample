@@ -22,7 +22,9 @@
       "@arsi/module-user-management": ["./modules/user-management/public.ts"],
       "@arsi/module-user-management/entry": ["./modules/user-management/index.tsx"],
       "@arsi/module-product-management": ["./modules/product-management/public.ts"],
-      "@arsi/module-product-management/entry": ["./modules/product-management/index.tsx"]
+      "@arsi/module-product-management/entry": ["./modules/product-management/index.tsx"],
+      "@arsi/module-module-sample": ["./modules/module-sample/public.ts"],
+      "@arsi/module-module-sample/entry": ["./modules/module-sample/index.tsx"]
     }
   },
   "include": ["shared", "modules", "vitest.config.ts", "vitest.setup.ts"]
