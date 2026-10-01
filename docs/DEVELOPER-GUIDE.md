@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.7.1
+**Version**: 0.7.2
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -199,6 +199,8 @@ web-modules/modules/order-management/
 ```
 
 Catatan: `axios` hanya boleh di-import sebagai **value** di `index.tsx` (register service). Import `import type { AxiosInstance }` di service tetap boleh (ESLint `allowTypeImports`).
+
+`name` **wajib** mengikuti `@arsi/module-<folder>` — divalidasi oleh `npm run gen:modules` (loader map di-generate dari field ini).
 
 ### 3.2 `types.ts`
 
@@ -555,6 +557,92 @@ Aturan lengkap: CONTRACT §1.6. Langkah praktis:
 7. Modul baru → tambah `COPY package.json` di Dockerfile + `npm run check:dockerfile`.
 8. Verifikasi duplikat: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` harus 1 root; bandingkan ukuran chunk.
 
+### 3.16 API Client & Service Registry
+
+Dua cara mengakses backend:
+
+| Kebutuhan | Pakai | Kenapa |
+| --- | --- | --- |
+| Endpoint sederhana, satu baseURL (`deps.config.apiBase`) | `deps.api` / `useApi()` | Instance axios default container; tanpa registrasi |
+| Service dengan baseURL/config berbeda, atau di-register extension | `deps.apiRegistry` / `useApiRegistry()` | Registry bernama; `register` duplikat throw, `get` nama tak dikenal throw |
+| Butuh server state di component | `useQuery` + service factory | Service tidak menyentuh React; hook yang membungkus |
+
+**Pola lengkap (modul):**
+
+```ts
+// 1) index.tsx — daftarkan client di init (sekali)
+const orderClient = axios.create({ baseURL: deps.config.apiBase, timeout: 8000 });
+deps.apiRegistry.register('order', orderClient);
+```
+
+```ts
+// 2) services/service.order.ts — factory, terima AxiosInstance (lihat §3.3)
+export function createOrderService(api: AxiosInstance) {
+  return { list: (params?: OrderListParams) => api.get('/orders', { params }).then((r) => r.data) };
+}
+```
+
+```ts
+// 3) hooks/useOrder.ts — ambil instance dari registry, bungkus React Query
+import { useApiRegistry, useQuery } from '@arsi/container';
+
+function useOrderService() {
+  const apiRegistry = useApiRegistry();
+  return useMemo(() => createOrderService(apiRegistry.get('order')), [apiRegistry]);
+}
+
+export function useOrderList(params?: OrderListParams) {
+  const service = useOrderService();
+  return useQuery({ queryKey: orderKeys.list(params), queryFn: () => service.list(params) });
+}
+```
+
+```tsx
+// 4) component — konsumsi hook, bukan axios
+const { data } = useOrderList({ limit: 10 });
+```
+
+**Akses langsung tanpa registry** (endpoint sederhana, contoh `module-sample`):
+
+```tsx
+import { useApi, useQuery } from '@arsi/container';
+
+const api = useApi();
+const { data } = useQuery({
+  queryKey: ['module-sample', 'user', 1],
+  queryFn: async () => (await api.get<SampleUser>('/users/1')).data,
+});
+```
+
+**Di extension:**
+
+```ts
+// Service baru milik client — namespace <client>.<service>; jangan override core (auth/user/product)
+deps.apiRegistry.register('client-a.audit', axios.create({ baseURL: '/api/audit-client-a' }));
+```
+
+```ts
+// Service wrapper: bungkus factory modul (lihat §4.5)
+const base = createSampleService(apiRegistry.get('module-sample'));
+const wrapped = {
+  ...base,
+  getUser: async (id: number) => {
+    if (id > 3) throw new Error('client-a: hanya user 1-3');
+    return base.getUser(id);
+  },
+};
+```
+
+**Aturan:**
+
+- Registrasi **wajib** di `init(deps)`; nama unik & di-namespace (`<module>` atau `<client>.<service>`).
+- Component **wajib** ambil instance via `useApi()`/`useApiRegistry()` — dilarang membuat axios client di component.
+- Service factory **tidak boleh** mengakses `deps`/React; hanya menerima `AxiosInstance`.
+- Extension **tidak boleh** override service core — daftarkan nama baru; ubah business rule lewat service wrapper (§4.5).
+- `apiRegistry.register` duplikat → throw; `get` nama tak dikenal → throw (fail-fast saat init/test).
+
+Contoh hidup: `module-sample` halaman `/module-sample/api` (`deps.api`) dan `/module-sample/api-registry` (registry + factory); wrapper extension di `web-extension-client-a/src/hooks/useClientASample.ts`.
+
 ---
 
 ## 4. Membuat Extension (module-extension)
@@ -624,6 +712,8 @@ export default async function init(deps: Deps): Promise<void> {
 ```
 
 Aturan: extension **tidak boleh** override service core (`auth`, `user`, `product`) — daftarkan nama baru `<client>.<service>`. Extension **tidak boleh** import module lewat `/entry`, hanya `@arsi/module-<name>` (public API).
+
+Contoh hidup 3 tingkat (slot → route override → service wrapper): `web-extension-client-a` + `module-sample` — lihat §4.3–§4.5.
 
 **Prasyarat override module X**: tambahkan alias di repo extension (sekali saja per module) —
 
@@ -867,7 +957,8 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 
 | Gejala | Penyebab & solusi |
 | --- | --- |
-| Build error `ENOTDIR .../public.ts/entry` | Alias `/entry` tertulis **setelah** alias base di `aliases.cjs`. Pindahkan `/entry` ke atas. |
+| `@arsi/module-*/entry` salah resolve (`.../public.ts/entry`) | Pola `/entry` harus di **atas** pola base di `aliases.cjs`/`tsconfig.json` — Vite & TypeScript memilih pola pertama yang match. |
+| Test extension gagal `Cannot read properties of null (reading 'useCallback')` | Dua salinan React (komponen shared/Radix vs `react-dom` extension). Di `vitest.config.ts` extension: alias `react`/`react-dom` ke node_modules extension + `server.deps.inline` untuk `@arsi/shared` & `@radix-ui`. |
 | Warning Tailwind "matching all of node_modules" | Ada `node_modules` nested di `web-modules/modules/*` (npm menaruh sebagian deps di sana). Pastikan `tailwind.config.cjs` container memuat negasi `'!../web-modules/modules/**/node_modules/**'`. |
 | Warna tidak berubah saat ganti tema | Ada hex mentah atau utility `dark:` di komponen. Ganti dengan token (`bg-card`, `text-muted-foreground`, dst) — lihat §5.4. |
 | Test palet/kontras gagal | `cd web-container && npm test -- src/styles/tokens.test.ts`. Update nilai di `globals.css` + mapping di `tailwind.preset.cjs`; jangan longgarkan test. |
@@ -987,5 +1078,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.7.1
+**Document version**: 0.7.2
 **Last updated**: 2026-09-25

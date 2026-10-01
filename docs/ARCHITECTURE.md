@@ -252,6 +252,7 @@ Import di luar public API adalah pelanggaran kontrak.
 
 2. bootstrap()
    ├─ discover()
+   │   ├─ moduleLoaders.generated.ts    → map name → lazy import (hasil `npm run gen:modules`)
    │   ├─ for module in config.modules:
    │   │   ├─ module.init(deps)         → register service, menu, route, i18n
    │   │   └─ module.registerModal(deps) → opsional
@@ -816,7 +817,9 @@ const wrapped = {
 | Ganti tombol          | Slot            |
 | Ganti halaman penuh   | Route           |
 | Tambah route baru     | Route           |
-| Ganti validasi        | Service wrapper |
+| Ganti validasi            | Service wrapper |
+
+Contoh hidup ketiga tingkat: `module-sample` + `web-extension-client-a` (lihat DEVELOPER-GUIDE §4.3–§4.5).
 | Tambah efek samping   | Service wrapper |
 | Ganti business rule   | Service wrapper |
 
@@ -990,7 +993,7 @@ events.emit("client-a.audit.requested", { userId });
 `aliases.cjs` di setiap repo. Dipakai oleh:
 
 - `vite.config.ts` → `resolve.alias`
-- `.eslintrc.cjs` → `settings.import/resolver.alias`
+- `.eslintrc.cjs` → `settings.import/resolver.typescript` (membaca `paths` dari tsconfig)
 - `tsconfig.json` → `paths` (manual, tidak bisa import `.cjs`)
 
 ### 15.4 Symlink `current-client`
@@ -1385,6 +1388,7 @@ web-container/
 ├── current-client/              # symlink
 ├── tsconfig.json
 ├── vite.config.ts
+├── vitest.config.ts
 ├── tailwind.config.cjs
 ├── postcss.config.cjs
 ├── .eslintrc.cjs
@@ -1395,6 +1399,7 @@ web-container/
 ├── nginx.conf
 ├── docker/
 │   └── entrypoint.sh
+├── scripts/                     # generate-module-loaders + check-dockerfile-modules
 ├── public/
 │   └── config.json
 └── src/
@@ -1436,17 +1441,22 @@ web-modules/
 │   │   └── composite/
 │   └── hooks/
 └── modules/
-    └── user-management/
-        ├── package.json
-        ├── index.ts
+    ├── user-management/
+    ├── product-management/
+    └── module-sample/           # reference module (12 halaman demo dependency)
+        ├── package.json         # name wajib @arsi/module-<folder>
+        ├── index.tsx
         ├── public.ts
         ├── slots.ts
+        ├── modals.ts
+        ├── events.ts
         ├── queryKeys.ts
-        ├── routes/
+        ├── types.ts
         ├── services/
         ├── hooks/
         ├── store/
         ├── components/
+        ├── pages/
         └── i18n/
 ```
 
@@ -1464,6 +1474,8 @@ web-extension-client-a/
 └── src/
     ├── index.tsx
     ├── components/
+    ├── hooks/
+    ├── i18n/
     └── overrides/
         └── user-management/
 ```
@@ -1515,8 +1527,8 @@ web-extension-client-a/
 
 ---
 
-**Document version**: 0.1.0
-**Last updated**: 2026-09-24
+**Document version**: 0.2.0
+**Last updated**: 2026-09-25
 
 **Changelog:**
 
