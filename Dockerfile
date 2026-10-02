@@ -29,6 +29,7 @@ FROM builder AS base-app
 
 RUN cd web-container \
     && ln -sfn ../web-extension-base current-client \
+    && npm run check:base \
     && CLIENT=base npm run build:client
 
 FROM nginx:1.27-alpine AS runtime

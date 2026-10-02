@@ -12,6 +12,7 @@ if [[ "${VERIFY:-0}" == "1" ]]; then
   (cd web-extension-base && npm ci && npm run typecheck && npm run lint)
   (cd web-container && ln -sfn ../web-extension-base current-client && npm ci \
     && npm run typecheck && npm test && npm run check:dockerfile \
+    && BASE_VERSION="$BASE_VERSION" npm run check:base \
     && CLIENT=base npm run build:client)
 fi
 
