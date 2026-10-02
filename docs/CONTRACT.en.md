@@ -114,7 +114,8 @@ Importing from files outside the public API is a **contract violation**.
 - Forbidden to add libraries that duplicate container capabilities: toast, modal, notifications, i18n, React Query, HTTP client, event bus.
 - Modules/extensions **must not** have Tailwind/PostCSS config; the Tailwind plugin lives only in `shared/tailwind.preset.cjs`.
 - Global CSS from libraries **must not** be imported from modules; import only in `web-container/src/styles/globals.css`.
-- New workspace package (module) → add `COPY <package.json>` in `web-container/Dockerfile` and run `npm run check:dockerfile`; lockfile **must** be committed.
+- The base `Dockerfile` lives at the **root of the base repo** (`arsi-web-base` = `web-container` + `web-modules` + `web-extension-base`); a new workspace package (module) → add `COPY <package.json>` in the root Dockerfile, run `npm run check:dockerfile` in `web-container` (the guard validates the root Dockerfile, including `web-extension-base/package.json`); lockfile **must** be committed.
+- Extension repos **do not** add module `COPY` lines — the build consumes the base builder image (`/app/extension`, symlink `current-client -> ../extension`); extensions **must** pin `manifest.json.baseVersion` exactly to the base version (checked by `npm run check:base` during the client image build).
 
 **Mandatory verification when adding a dependency:**
 
@@ -1068,7 +1069,8 @@ Constants (`containerEvents`) and payload type (`ContainerSearchPayload`) are ex
 | Service name           | `<module>` or `<client>.<service>`   | `user`, `client-a.audit`                  |
 | Query key root         | `[<module>, <entity>]`               | `['user-management', 'user']`             |
 | Store persist key      | `<layer>:<name>`                     | `module:user-management`                  |
-| Docker image           | `<org>-web-<client>`                 | `arsi-web-client-a`                       |
+| Docker image           | `<org>/arsi-web-base` (base), `<org>/arsi-web-<client>` (client) | `<org>/arsi-web-base`, `<org>/arsi-web-client-a` |
+| Docker image tag       | `<ver>` (runtime), `<ver>-builder` (builder) | `0.1.0`, `0.1.0-builder`                  |
 
 ---
 
@@ -1099,8 +1101,8 @@ Constants (`containerEvents`) and payload type (`ContainerSearchPayload`) are ex
 
 - Breaking change in a module's public API = major version.
 - Breaking change in shared = major version.
-- Extensions **must** declare `baseVersion` and `modules`.
-- Build **must** verify compatibility, fail if it doesn't match.
+- Extensions **must** declare `baseVersion` (exact pin to `web-container/package.json:version` — currently `0.1.0`) and `modules`.
+- The client image build **must** run `npm run check:base` in the builder image; a `baseVersion` mismatch = build failure.
 
 ---
 
@@ -1218,11 +1220,12 @@ Before merging a PR:
 
 ---
 
-**Document version**: 0.6.0
-**Last updated**: 2026-09-25
+**Document version**: 0.7.0
+**Last updated**: 2026-10-02
 
 **Changelog:**
 
+- **0.7.0** — Base image & extension deployment: Dockerfile moved to the base repo root (`arsi-web-base`) with a multi-target base image (builder + runtime, Node 22 builder); extensions `FROM` the base image with no module `COPY` lines; `manifest.json.baseVersion` exact pin + `check:base` guard during the extension build; Docker rules in §1.6/§15/§16 updated.
 - **0.6.0** — Generated Loader Map (§1.7): map entry generated from `package.json` name, wildcard alias (§1.5), sync test, pre-hooks; adding a module doesn't touch `discover.ts`/aliases/tsconfig.
 - **0.5.0** — Dependency Policy (§1.6): package ownership, peer/dedupe rules, prohibition on duplicating container capabilities, CSS/Tailwind rules, Docker `check:dockerfile`, and bundle duplicate verification.
 - **0.4.0** — Container → module event (`containerEvents` / `ContainerSearchPayload`), global search in the Topbar as a sample; rules in §13.

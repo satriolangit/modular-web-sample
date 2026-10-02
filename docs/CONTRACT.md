@@ -114,7 +114,8 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 - Dilarang menambah library yang menduplikasi kapabilitas container: toast, modal, notifikasi, i18n, React Query, HTTP client, event bus.
 - Modul/extension **dilarang** punya Tailwind/PostCSS config; plugin Tailwind hanya di `shared/tailwind.preset.cjs`.
 - Global CSS dari library **dilarang** di-import dari modul; import hanya di `web-container/src/styles/globals.css`.
-- Workspace package baru (modul) → tambah `COPY <package.json>` di `web-container/Dockerfile` dan jalankan `npm run check:dockerfile`; lockfile **wajib** di-commit.
+- Dockerfile base ada di **root repo base** (`arsi-web-base` = `web-container` + `web-modules` + `web-extension-base`); package workspace baru (modul) → tambah `COPY <package.json>` di Dockerfile root, jalankan `npm run check:dockerfile` di `web-container` (guard memvalidasi Dockerfile root, termasuk `web-extension-base/package.json`); lockfile **wajib** di-commit.
+- Repo extension **tidak** menambah `COPY` modul — build memakai base builder image (`/app/extension`, symlink `current-client -> ../extension`); extension **wajib** pin `manifest.json.baseVersion` exact ke versi base (dicek `npm run check:base` saat build image client).
 
 **Verifikasi wajib saat menambah dependency:**
 
@@ -1068,7 +1069,8 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 | Service name           | `<module>` atau `<client>.<service>` | `user`, `client-a.audit`                  |
 | Query key root         | `[<module>, <entity>]`               | `['user-management', 'user']`             |
 | Store persist key      | `<layer>:<name>`                     | `module:user-management`                  |
-| Docker image           | `<org>-web-<client>`                 | `arsi-web-client-a`                       |
+| Docker image           | `<org>/arsi-web-base` (base), `<org>/arsi-web-<client>` (client) | `<org>/arsi-web-base`, `<org>/arsi-web-client-a` |
+| Docker image tag       | `<ver>` (runtime), `<ver>-builder` (builder) | `0.1.0`, `0.1.0-builder`                  |
 
 ---
 
@@ -1099,8 +1101,8 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 
 - Breaking change di public API modul = major version.
 - Breaking change di shared = major version.
-- Extension **wajib** declare `baseVersion` dan `modules`.
-- Build **wajib** verify kompatibilitas, fail kalau tidak cocok.
+- Extension **wajib** declare `baseVersion` (pin exact ke `web-container/package.json:version` — sekarang `0.1.0`) dan `modules`.
+- Build image client **wajib** menjalankan `npm run check:base` di builder image; mismatch `baseVersion` = build gagal.
 
 ---
 
@@ -1218,11 +1220,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.6.0
-**Last updated**: 2026-09-25
+**Document version**: 0.7.0
+**Last updated**: 2026-10-02
 
 **Changelog:**
 
+- **0.7.0** — Base image & extension deployment: Dockerfile pindah ke root repo base (`arsi-web-base`) dengan base image multi-target (builder + runtime, Node 22 builder); extension `FROM` base image tanpa `COPY` modul; `manifest.json.baseVersion` pin exact + guard `check:base` saat build extension; aturan Docker di §1.6/§15/§16 diperbarui.
 - **0.6.0** — Generated Loader Map (§1.7): map entry di-generate dari `package.json` name, alias wildcard (§1.5), sync test, pre-hooks; menambah modul tidak menyentuh `discover.ts`/alias/tsconfig.
 - **0.5.0** — Dependency Policy (§1.6): kepemilikan package, aturan peer/dedupe, larangan duplikasi kapabilitas container, aturan CSS/Tailwind, Docker `check:dockerfile`, dan verifikasi duplikat bundle.
 - **0.4.0** — Event container → module (`containerEvents` / `ContainerSearchPayload`), global search di Topbar sebagai sample; aturan di §13.
