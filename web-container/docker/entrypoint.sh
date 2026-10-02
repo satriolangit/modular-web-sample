@@ -2,7 +2,7 @@
 set -e
 
 CONFIG_FILE=/usr/share/nginx/html/config.json
-CLIENT="${VITE_CLIENT:-client-a}"
+CLIENT="${VITE_CLIENT:-base}"
 MODULES_CSV="${VITE_MODULES:-user-management}"
 API_BASE="${VITE_API_BASE:-https://dummyjson.com}"
 ENABLE_AUDIT_LIVE="${VITE_ENABLE_AUDIT_LIVE:-true}"

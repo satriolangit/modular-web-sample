@@ -5,3 +5,10 @@
 web-container/current-client
 **/*.log
 **/.DS_Store
+docs
+.gitnexus
+.agents
+.claude
+skills-lock.json
+web-extension-client-a
+web-extension-template

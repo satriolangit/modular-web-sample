@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const dockerfilePath = fileURLToPath(new URL('../Dockerfile', import.meta.url));
+const dockerfilePath = fileURLToPath(new URL('../../Dockerfile', import.meta.url));
 const workspaceRoot = fileURLToPath(new URL('../..', import.meta.url));
 
 function modulePackageJsons() {
@@ -18,7 +18,7 @@ const required = [
   'web-modules/package.json',
   'web-modules/shared/package.json',
   ...modulePackageJsons(),
-  'web-extension-client-a/package.json',
+  'web-extension-base/package.json',
 ];
 
 const dockerfile = readFileSync(dockerfilePath, 'utf8');
