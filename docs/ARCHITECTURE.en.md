@@ -1007,8 +1007,8 @@ web-container/current-client → ../web-extension-<client>
 Switch client:
 
 ```bash
-npm run link:client-a
-npm run link:client-b
+CLIENT=client-a npm run link:client   # symlink -> ../web-extension-client-a
+CLIENT=client-b npm run link:client   # symlink -> ../web-extension-client-b
 ```
 
 **In the builder image** — the extension repo is always COPYed to `/app/extension` (not `web-extension-<client>`), then `web-container/current-client → ../extension` is created at build time. That keeps the `@arsi/extension` alias and all other path mappings valid with no changes.
@@ -1240,9 +1240,12 @@ npm run dev:client-a
 
 ```bash
 cd web-container
-npm run link:client-b
-npm run dev:client-b
+CLIENT=client-b npm run link:client   # symlink current-client -> ../web-extension-client-b
+# Dev server: add a dev:<client> script in web-container like dev:client-a,
+# then run `npm run dev:<client>`.
 ```
+
+Generic scripts: `link:client` and `build:client` (require the `CLIENT` env); there is **no** generic dev script — `dev:<client>` is added per client (example: `dev:client-a`). Details: `DEPLOYMENT-GUIDE.en.md` §3.3.
 
 **Docker/CI** does not use a repo symlink: each extension repo builds its own client image via `ci/build-client.sh` (`FROM` the base image; the extension folder is `/app/extension` and the symlink is created at build time). See §16.2.
 
@@ -1264,9 +1267,11 @@ npm run dev:client-b
 
 ```bash
 cd web-container
-npm run link:client-x
-VITE_CLIENT=client-x VITE_MODULES=user-management npm run dev
+CLIENT=client-x npm run link:client   # symlink current-client -> ../web-extension-client-x
+# add a dev:<client> script like dev:client-a, then run that script
 ```
+
+Full dev commands: `DEPLOYMENT-GUIDE.en.md` §3.3.
 
 ### 19.5 Override from an Extension
 

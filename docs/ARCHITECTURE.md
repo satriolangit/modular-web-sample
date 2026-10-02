@@ -1007,8 +1007,8 @@ web-container/current-client → ../web-extension-<client>
 Ganti client:
 
 ```bash
-npm run link:client-a
-npm run link:client-b
+CLIENT=client-a npm run link:client   # symlink -> ../web-extension-client-a
+CLIENT=client-b npm run link:client   # symlink -> ../web-extension-client-b
 ```
 
 **Di image builder** — repo extension selalu di-COPY ke `/app/extension` (bukan `web-extension-<client>`), lalu `web-container/current-client → ../extension` dibuat saat build. Karena itu alias `@arsi/extension` dan path mapping lain tetap valid tanpa perubahan.
@@ -1240,9 +1240,12 @@ npm run dev:client-a
 
 ```bash
 cd web-container
-npm run link:client-b
-npm run dev:client-b
+CLIENT=client-b npm run link:client   # symlink current-client -> ../web-extension-client-b
+# Dev server: tambahkan script dev:<client> di web-container seperti dev:client-a,
+# lalu jalankan `npm run dev:<client>`.
 ```
+
+Script generik: `link:client` dan `build:client` (butuh env `CLIENT`); **tidak ada** script dev generik — script `dev:<client>` ditambahkan per client (contoh `dev:client-a`). Detail: `DEPLOYMENT-GUIDE.md` §3.3.
 
 **Docker/CI** tidak memakai symlink di repo: tiap repo extension membangun image client sendiri via `ci/build-client.sh` (`FROM` base image; folder extension di `/app/extension`, symlink dibuat saat build). Lihat §16.2.
 
@@ -1264,9 +1267,11 @@ npm run dev:client-b
 
 ```bash
 cd web-container
-npm run link:client-x
-VITE_CLIENT=client-x VITE_MODULES=user-management npm run dev
+CLIENT=client-x npm run link:client   # symlink current-client -> ../web-extension-client-x
+# tambahkan script dev:<client> seperti dev:client-a, lalu jalankan script tersebut
 ```
+
+Perintah dev lengkap: `DEPLOYMENT-GUIDE.md` §3.3.
 
 ### 19.5 Override dari Extension
 
