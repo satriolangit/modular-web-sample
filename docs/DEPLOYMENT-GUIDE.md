@@ -123,7 +123,7 @@ npm run typecheck && npm test && npm run check:dockerfile && CLIENT=base npm run
 Repo extension:
 
 ```bash
-cd web-extension-client-a && npm ci && npm run typecheck && npm test && npm run lint
+cd web-extension-client-a && npm ci && npm run typecheck && npm run test --if-present && npm run lint
 ```
 
 `ci/build-base.sh` dengan `VERIFY=1` menjalankan urutan repo base di atas. Verifikasi repo extension juga berjalan **di dalam builder image** saat `ci/build-client.sh`.

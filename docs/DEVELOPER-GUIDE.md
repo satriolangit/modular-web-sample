@@ -830,7 +830,9 @@ ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-cli
 4. Dev lokal opsional (symlink `current-client` + script `dev:<client>`):
 
 ```bash
-cd web-container
+cd web-extension-client-x
+npm ci                                 # install dependency extension
+cd ../web-container
 CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extension-client-x
 # tambahkan script "dev:client-x" seperti dev:client-a, lalu jalankan
 ```

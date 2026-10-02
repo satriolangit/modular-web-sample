@@ -123,7 +123,7 @@ npm run typecheck && npm test && npm run check:dockerfile && CLIENT=base npm run
 Extension repo:
 
 ```bash
-cd web-extension-client-a && npm ci && npm run typecheck && npm test && npm run lint
+cd web-extension-client-a && npm ci && npm run typecheck && npm run test --if-present && npm run lint
 ```
 
 `ci/build-base.sh` with `VERIFY=1` runs the base repo sequence above. Extension verification also runs **inside the builder image** during `ci/build-client.sh`.
