@@ -247,6 +247,8 @@ TAG=2026.10.01 docker compose up -d --force-recreate   # apply new env
 
 TLS/reverse proxy (nginx/Traefik/ALB) is configured on the host, not in this container.
 
+For a complete production runtime guide on a Linux VM (Docker install, TLS with Let's Encrypt, updates, rollback, firewall, operations), see `VM-DEPLOYMENT-GUIDE.en.md`.
+
 ---
 
 ## 6. Runtime Configuration

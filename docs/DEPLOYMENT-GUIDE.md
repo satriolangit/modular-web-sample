@@ -247,6 +247,8 @@ TAG=2026.10.01 docker compose up -d --force-recreate   # apply env baru
 
 TLS/reverse proxy (nginx/Traefik/ALB) dikonfigurasi di host, bukan di container ini.
 
+Panduan runtime produksi lengkap di VM Linux (install Docker, TLS Let's Encrypt, update, rollback, firewall, operasional): `VM-DEPLOYMENT-GUIDE.en.md` (English).
+
 ---
 
 ## 6. Runtime Configuration
