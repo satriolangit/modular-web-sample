@@ -1,6 +1,6 @@
 # Developer Guide — Building Modules & Extensions
 
-**Version**: 0.7.3
+**Version**: 0.7.4
 **Audience**: Developers of `web-modules`, `web-extension-<client>`
 **Related documents**: `ARCHITECTURE.md` (why & how), `CONTRACT.md` (hard rules — violations = PR rejected)
 
@@ -28,10 +28,13 @@
 
 ```
 arsi-web-workspace/
+├── Dockerfile                  # base image (multi-target: builder | runtime)
+├── ci/build-base.sh            # build + push the base image
 ├── docs/                       # ARCHITECTURE.md, CONTRACT.md, this guide
 ├── web-container/              # shell: DI, routing, layout, config, registries
 │   └── current-client -> ../web-extension-client-a   (symlink)
 ├── web-modules/                # shared/ (UI kit) + modules/<name>/ (business features)
+├── web-extension-base/         # default extension (client "base") for the base image
 ├── web-extension-client-a/     # overrides for client-a
 └── web-extension-template/     # template for new clients
 ```
@@ -56,8 +59,9 @@ cd ../web-extension-client-a && npm install
 | Need | Command |
 | --- | --- |
 | client-a dev server | `cd web-container && npm run dev:client-a` (http://localhost:5173) |
-| Switch active client | `cd web-container && npm run link:client-a` (restart the dev server) |
-| Build client-a | `cd web-container && npm run build:client-a` → `dist/client-a/` |
+| Switch active client | `cd web-container && CLIENT=<client> npm run link:client` (or `npm run link:client-a`); restart the dev server |
+| Build client | `cd web-container && CLIENT=<client> npm run build:client` → `dist/<client>/` (client-a: `npm run build:client-a`) |
+| Build base (default image) | `cd web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client` → `dist/base/` |
 | Tests | `npm test` in any repo (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` (container & extension) |
@@ -153,7 +157,7 @@ Case study: `order-management`. Copy the structure from `web-modules/modules/pro
 9. `i18n/en.json` + `i18n/id.json`
 10. `index.tsx` — `init(deps)`
 11. `public.ts` — the contract
-12. Wiring: the loader map is generated automatically (`npm run gen:modules`); add the Dockerfile COPY + the `config.json` entry
+12. Wiring: the loader map is generated automatically (`npm run gen:modules`); add the COPY package.json in the `Dockerfile` at the base repo root + the `config.json` entry
 13. Tests
 14. Verification
 
@@ -507,7 +511,7 @@ The loader map `web-container/src/bootstrap/moduleLoaders.generated.ts` is **gen
 
 | File | What to add |
 | --- | --- |
-| `web-container/Dockerfile` | `COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/` before `npm ci` (+ `npm run check:dockerfile`) |
+| `Dockerfile` (base repo root) | `COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/` before `npm ci` (+ `npm run check:dockerfile` in `web-container`) |
 | `web-container/public/config.json` | `"modules": [..., "order-management"]` (dev; production is managed by CI) |
 
 ```bash
@@ -539,7 +543,8 @@ Full mocking patterns are in section 6.
 ```bash
 cd web-modules && npm run typecheck && npm test && npm run lint
 cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
-cd ../web-container && npm run dev:client-a
+cd ../web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client   # verify the base image
+cd ../web-container && npm run link:client-a && npm run dev:client-a
 # open http://localhost:5173 → the Orders menu appears, the page renders
 ```
 
@@ -555,7 +560,7 @@ Full rules: CONTRACT §1.6. Practical steps:
 4. If the library is imported by the container **and** a module/extension → add it to `resolve.dedupe` (`web-container/vite.config.ts`) + align versions. Context/singleton-based libs **must** be a single copy.
 5. Do not add a library that duplicates container capabilities (toast/modal/notifications/i18n/query/HTTP/event).
 6. Libraries without global CSS; Tailwind plugins only in the shared preset.
-7. New module → add the Dockerfile `COPY package.json` + `npm run check:dockerfile`.
+7. New module → add the `COPY package.json` in the `Dockerfile` at the base repo root + run `npm run check:dockerfile` in `web-container`.
 8. Duplicate check: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` must show 1 root; compare chunk sizes.
 
 ### 3.16 API Client & Service Registry
@@ -655,7 +660,9 @@ An extension = a `web-extension-<client>` repo; it has only **one** entry: the d
 ```
 web-extension-client-a/
 ├── package.json
-├── manifest.json
+├── manifest.json               # client + baseVersion (exact pin to the base tag)
+├── Dockerfile                  # FROM base image: <ver>-builder → <ver>
+├── ci/build-client.sh          # build + push the client image
 ├── tsconfig.json / aliases.cjs / .eslintrc.cjs / vitest.config.ts
 └── src/
     ├── index.tsx              # init(deps)
@@ -673,6 +680,8 @@ web-extension-client-a/
   "overrides": ["user-management"]
 }
 ```
+
+Extension repos do **not** contain `web-container`/`web-modules` — both come from the base builder image (`/app/web-container`, `/app/web-modules`). `baseVersion` **must** pin the base tag exactly and is checked by `npm run check:base` during the client image build (CONTRACT §1.6; details: `DEPLOYMENT-GUIDE.en.md` §3–§4).
 
 ### 4.2 `init(deps)` — complete example
 
@@ -809,15 +818,24 @@ expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.a
 
 ### 4.9 New client from the template
 
+1. Copy `web-extension-template` into a new `web-extension-<client>` repo (e.g. `web-extension-client-x`) and make it its own Git repo.
+2. Adjust `package.json` (`name`) and fill in `manifest.json`: `client` = `<client>`, `baseVersion` = the current base tag (exact, e.g. `0.1.0`), plus `modules`/`shared`/`overrides` as needed.
+3. Build & push the client image — the base is **not** rebuilt; the script uses the base image `FROM` the registry:
+
 ```bash
-cp -R web-extension-template web-extension-client-x   # or clone the template repo
 cd web-extension-client-x
-# edit: package.json (name), manifest.json (client, modules), .azure-pipelines.yml
-cd ../web-container
-ln -sfn ../web-extension-client-x current-client       # same pattern as link:client-a
+ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
 ```
 
-Tip: add a `"link:client-x": "ln -sfn ../web-extension-client-x current-client"` script to `web-container/package.json` for consistency. Then `npm install` in the new extension and start the dev server.
+4. Optional local dev (symlink `current-client` + a `dev:<client>` script):
+
+```bash
+cd web-container
+CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extension-client-x
+# add a "dev:client-x" script like dev:client-a, then run it
+```
+
+`ci/build-client.sh` runs the extension verification (typecheck/test/lint) inside the base builder image; `check:base` ensures `baseVersion` matches the base in use. Full build/run/rollback details: `DEPLOYMENT-GUIDE.en.md` §3–§5.
 
 ---
 
@@ -972,6 +990,7 @@ Full example: `product-management/events/containerSearch.test.ts`.
 | Test fails with "found multiple elements" | RTL is not cleaning up (globals off). Make sure `vitest.setup.ts` calls `cleanup()` in `afterEach`. |
 | `init` runs twice during dev | React StrictMode. The container already runs it `runOnce`; modules/extensions still **must** have an `initialized` guard. |
 | Changes do not appear after switching clients | The `current-client` symlink changed → restart the dev server. |
+| `current-client` points at the wrong extension | Wrong `CLIENT` name or a stale link. Check `readlink web-container/current-client`; re-run `npm run link:client-a` / `CLIENT=<client> npm run link:client`, then restart the dev server. |
 | Engine warnings during `npm install` | Local Node is newer than some packages' target; safe to ignore as long as tests pass. CI/Docker uses Node 20. |
 | DummyJSON mutations "do not persist" | That is the simulation (create/update/delete do not persist). The pilot uses optimistic cache + rollback; with a real backend add `invalidateQueries` in `onSettled`. |
 | Topbar search does not filter products | The `containerEvents.searchChanged` listener is not registered (check `init`) or the product module is not enabled in `config.json`. Listen via the constant, not a string literal. |
@@ -1003,7 +1022,7 @@ Full example: `product-management/events/containerSearch.test.ts`.
 - [ ] Stores use the persist key `module:<name>`; devtools via `isDev`.
 - [ ] `public.ts` is updated; alias/tsconfig/discover/config.json are wired.
 - [ ] Tests added (service, query keys, store, public API, component).
-- [ ] `typecheck`, `test`, `lint`, `build:client-a` pass.
+- [ ] `typecheck`, `test`, `lint`, `check:dockerfile`, `build:client-a` pass (base image build: `CLIENT=base npm run build:client`).
 
 **Extension**
 
@@ -1014,8 +1033,8 @@ Full example: `product-management/events/containerSearch.test.ts`.
 - [ ] Override styling uses tokens (§5.4); no raw hex / `dark:` utilities.
 - [ ] New dependencies follow CONTRACT §1.6 (react stays a peer, dedupe when cross-tree).
 - [ ] Does not listen to other extensions' events; does not make modules listen to extension events.
-- [ ] `manifest.json` is updated (client, modules, overrides).
-- [ ] Override tests added; `typecheck`, `test`, `lint` pass.
+- [ ] `manifest.json` is updated (client, baseVersion, modules, overrides).
+- [ ] Override tests added; `typecheck`, `test`, `lint` pass; the client image builds via `ci/build-client.sh` (`check:base` passes).
 
 ---
 
@@ -1028,6 +1047,7 @@ Full example: `product-management/events/containerSearch.test.ts`.
 - `CONTRACT.md` §15 — Naming conventions.
 - `CONTRACT.md` §10.4 — ARSI Purple brand tokens & styling rules.
 - `CONTRACT.md` §9.4 — UI kit import rules (including container self-contained).
+- `docs/DEPLOYMENT-GUIDE.en.md` — base/client image builds, container runtime env, CI, rollback.
 - `docs/phase.02-rbac-navigation.md` — Phase 2 plan: Keycloak RBAC + database-driven navigation.
 
 ### 9.2 Code example map
@@ -1079,5 +1099,5 @@ Fastest path: copy the pilot module/extension that is closest, then rename & fil
 
 ---
 
-**Document version**: 0.7.3
-**Last updated**: 2026-10-01
+**Document version**: 0.7.4
+**Last updated**: 2026-10-02

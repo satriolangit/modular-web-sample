@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.7.3
+**Version**: 0.7.4
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -28,10 +28,13 @@
 
 ```
 arsi-web-workspace/
+├── Dockerfile                  # image base (multi-target: builder | runtime)
+├── ci/build-base.sh            # build + push image base
 ├── docs/                       # ARCHITECTURE.md, CONTRACT.md, panduan ini
 ├── web-container/              # shell: DI, routing, layout, config, registry
 │   └── current-client -> ../web-extension-client-a   (symlink)
 ├── web-modules/                # shared/ (UI kit) + modules/<name>/ (fitur bisnis)
+├── web-extension-base/         # extension default (client "base") untuk image base
 ├── web-extension-client-a/     # override untuk client-a
 └── web-extension-template/     # template untuk client baru
 ```
@@ -56,8 +59,9 @@ cd ../web-extension-client-a && npm install
 | Kebutuhan | Perintah |
 | --- | --- |
 | Dev server client-a | `cd web-container && npm run dev:client-a` (http://localhost:5173) |
-| Ganti client aktif | `cd web-container && npm run link:client-a` (ulangi dev server) |
-| Build client-a | `cd web-container && npm run build:client-a` → `dist/client-a/` |
+| Ganti client aktif | `cd web-container && CLIENT=<client> npm run link:client` (atau `npm run link:client-a`); restart dev server |
+| Build client | `cd web-container && CLIENT=<client> npm run build:client` → `dist/<client>/` (client-a: `npm run build:client-a`) |
+| Build base (image default) | `cd web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client` → `dist/base/` |
 | Test | `npm test` di repo mana pun (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` (container & extension) |
@@ -153,7 +157,7 @@ Studi kasus: `order-management`. Salin struktur dari `web-modules/modules/produc
 9. `i18n/en.json` + `i18n/id.json`
 10. `index.tsx` — `init(deps)`
 11. `public.ts` — kontrak
-12. Wiring: loader map di-generate otomatis (`npm run gen:modules`); tambah COPY di Dockerfile + entri `config.json`
+12. Wiring: loader map di-generate otomatis (`npm run gen:modules`); tambah COPY package.json di `Dockerfile` root repo base + entri `config.json`
 13. Tests
 14. Verifikasi
 
@@ -507,7 +511,7 @@ Loader map `web-container/src/bootstrap/moduleLoaders.generated.ts` **di-generat
 
 | File | Yang ditambahkan |
 | --- | --- |
-| `web-container/Dockerfile` | `COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/` sebelum `npm ci` (+ `npm run check:dockerfile`) |
+| `Dockerfile` (root repo base) | `COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/` sebelum `npm ci` (+ `npm run check:dockerfile` di `web-container`) |
 | `web-container/public/config.json` | `"modules": [..., "order-management"]` (dev; produksi dikelola CI) |
 
 ```bash
@@ -539,7 +543,8 @@ Pola mocking lengkap di [bagian 6](#6-testing-playbook).
 ```bash
 cd web-modules && npm run typecheck && npm test && npm run lint
 cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
-cd ../web-container && npm run dev:client-a
+cd ../web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client   # verifikasi image base
+cd ../web-container && npm run link:client-a && npm run dev:client-a
 # buka http://localhost:5173 → menu Orders muncul, halaman render
 ```
 
@@ -555,7 +560,7 @@ Aturan lengkap: CONTRACT §1.6. Langkah praktis:
 4. Jika library di-import container **dan** modul/extension → tambahkan ke `resolve.dedupe` (`web-container/vite.config.ts`) + samakan versi. Lib berbasis context/singleton **wajib** single copy.
 5. Jangan tambah lib yang menduplikasi kapabilitas container (toast/modal/notifikasi/i18n/query/HTTP/event).
 6. Library tanpa global CSS; plugin Tailwind hanya di preset shared.
-7. Modul baru → tambah `COPY package.json` di Dockerfile + `npm run check:dockerfile`.
+7. Modul baru → tambah `COPY package.json` di `Dockerfile` root repo base + jalankan `npm run check:dockerfile` di `web-container`.
 8. Verifikasi duplikat: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` harus 1 root; bandingkan ukuran chunk.
 
 ### 3.16 API Client & Service Registry
@@ -655,7 +660,9 @@ Extension = repo `web-extension-<client>`; hanya punya **satu** entry: default e
 ```
 web-extension-client-a/
 ├── package.json
-├── manifest.json
+├── manifest.json               # client + baseVersion (pin exact ke tag base)
+├── Dockerfile                  # FROM base image: <ver>-builder → <ver>
+├── ci/build-client.sh          # build + push image client
 ├── tsconfig.json / aliases.cjs / .eslintrc.cjs / vitest.config.ts
 └── src/
     ├── index.tsx              # init(deps)
@@ -673,6 +680,8 @@ web-extension-client-a/
   "overrides": ["user-management"]
 }
 ```
+
+Repo extension **tidak** memuat `web-container`/`web-modules` — keduanya tersedia dari base builder image (`/app/web-container`, `/app/web-modules`). `baseVersion` **wajib** pin exact ke tag base dan dicek `npm run check:base` saat build image client (CONTRACT §1.6; detail: `DEPLOYMENT-GUIDE.md` §3–§4).
 
 ### 4.2 `init(deps)` — contoh lengkap
 
@@ -809,15 +818,24 @@ expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.a
 
 ### 4.9 Client baru dari template
 
+1. Salin `web-extension-template` menjadi repo baru `web-extension-<client>` (mis. `web-extension-client-x`), lalu jadikan repo Git sendiri.
+2. Sesuaikan `package.json` (`name`) dan isi `manifest.json`: `client` = `<client>`, `baseVersion` = tag base saat ini (exact, mis. `0.1.0`), plus `modules`/`shared`/`overrides` sesuai kebutuhan.
+3. Build & push image client — base **tidak** dibangun ulang; script memakai base image `FROM` registry:
+
 ```bash
-cp -R web-extension-template web-extension-client-x   # atau clone repo template
 cd web-extension-client-x
-# edit: package.json (name), manifest.json (client, modules), .azure-pipelines.yml
-cd ../web-container
-ln -sfn ../web-extension-client-x current-client       # pola sama seperti link:client-a
+ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
 ```
 
-Tips: tambahkan script `"link:client-x": "ln -sfn ../web-extension-client-x current-client"` di `web-container/package.json` agar konsisten. Lalu `npm install` di extension baru dan jalankan dev server.
+4. Dev lokal opsional (symlink `current-client` + script `dev:<client>`):
+
+```bash
+cd web-container
+CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extension-client-x
+# tambahkan script "dev:client-x" seperti dev:client-a, lalu jalankan
+```
+
+`ci/build-client.sh` menjalankan verifikasi extension (typecheck/test/lint) di dalam base builder image; `check:base` memastikan `baseVersion` cocok dengan base yang dipakai. Detail build/run/rollback: `DEPLOYMENT-GUIDE.md` §3–§5.
 
 ---
 
@@ -972,6 +990,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Test gagal "found multiple elements" | RTL tidak cleanup (globals off). Pastikan `vitest.setup.ts` memanggil `cleanup()` di `afterEach`. |
 | `init` jalan dua kali saat dev | React StrictMode. Container sudah `runOnce`; module/extension tetap **wajib** punya guard `initialized`. |
 | Perubahan tidak muncul setelah ganti client | Symlink `current-client` berubah → restart dev server. |
+| `current-client` menunjuk extension yang salah | Salah nama `CLIENT` atau link lama tertinggal. Cek `readlink web-container/current-client`; ulangi `npm run link:client-a` / `CLIENT=<client> npm run link:client`, lalu restart dev server. |
 | Engine warning saat `npm install` | Node lokal > versi target beberapa paket; aman diabaikan selama test lulus. CI/Docker memakai Node 20. |
 | Mutasi DummyJSON "tidak tersimpan" | Memang simulasi (create/update/delete tidak persist). Pilot memakai strategi optimistic cache + rollback; saat backend nyata tambahkan `invalidateQueries` di `onSettled`. |
 | Search Topbar tidak memfilter produk | Listener `containerEvents.searchChanged` tidak ter-register (cek `init`) atau modul product tidak aktif di `config.json`. Listen lewat konstanta, bukan string literal. |
@@ -1003,7 +1022,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - [ ] Store memakai persist key `module:<name>`; devtools via `isDev`.
 - [ ] `public.ts` diperbarui; alias/tsconfig/discover/config.json ter-wiring.
 - [ ] Test ditambahkan (service, query keys, store, public API, komponen).
-- [ ] `typecheck`, `test`, `lint`, `build:client-a` lulus.
+- [ ] `typecheck`, `test`, `lint`, `check:dockerfile`, `build:client-a` lulus (build image base: `CLIENT=base npm run build:client`).
 
 **Extension**
 
@@ -1014,8 +1033,8 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - [ ] Styling override memakai token (§5.4); tanpa hex mentah / utility `dark:`.
 - [ ] Dependency baru mengikuti CONTRACT §1.6 (react tetap peer, dedupe jika lintas tree).
 - [ ] Tidak listen event extension lain; tidak membuat module listen event extension.
-- [ ] `manifest.json` diperbarui (client, modules, overrides).
-- [ ] Test override ditambahkan; `typecheck`, `test`, `lint` lulus.
+- [ ] `manifest.json` diperbarui (client, baseVersion, modules, overrides).
+- [ ] Test override ditambahkan; `typecheck`, `test`, `lint` lulus; image client terbangun via `ci/build-client.sh` (`check:base` lulus).
 
 ---
 
@@ -1028,6 +1047,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - `CONTRACT.md` §15 — Naming conventions.
 - `CONTRACT.md` §10.4 — Brand token ARSI Purple & aturan styling.
 - `CONTRACT.md` §9.4 — Aturan import UI kit (termasuk container self-contained).
+- `docs/DEPLOYMENT-GUIDE.md` — build image base/client, env runtime container, CI, rollback.
 - `docs/phase.02-rbac-navigation.md` — rencana Fase 2: Keycloak RBAC + navigasi berbasis database.
 
 ### 9.2 Peta contoh di kode
@@ -1075,9 +1095,9 @@ src/components/…      → komponen khas client
 src/overrides/<module>/…  → halaman override
 ```
 
-Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti nama & isi. Jangan lupa [wiring 7 file](#312-wiring--7-file-jangan-ada-yang-terlewat) untuk module baru.
+Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti nama & isi. Jangan lupa [wiring 2 file](#312-wiring--2-file-loader-map-otomatis) untuk module baru.
 
 ---
 
-**Document version**: 0.7.3
-**Last updated**: 2026-10-01
+**Document version**: 0.7.4
+**Last updated**: 2026-10-02
