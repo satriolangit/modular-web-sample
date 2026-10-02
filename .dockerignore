@@ -5,6 +5,8 @@
 web-container/current-client
 **/*.log
 **/.DS_Store
+**/.env
+**/.env.*
 docs
 .gitnexus
 .agents
