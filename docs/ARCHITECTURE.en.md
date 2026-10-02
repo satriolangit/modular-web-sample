@@ -1022,6 +1022,8 @@ npm run link:client-b
 
 ## 16. Build & Deployment
 
+Full step-by-step guide for DevOps (build, run Docker, CI, rollback, smoke test): `DEPLOYMENT-GUIDE.en.md`.
+
 ### 16.1 Build Locally
 
 ```bash
@@ -1034,62 +1036,61 @@ Output: `web-container/dist/client-a/`.
 
 ### 16.2 Docker
 
-**Dockerfile:**
+Build context = the **workspace root** (the Dockerfile COPYs all 3 repos):
+
+```bash
+docker build -f web-container/Dockerfile -t myorg.azurecr.io/arsi-web-client-a:<tag> .
+```
+
+Actual Dockerfile (abridged):
 
 ```dockerfile
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN ln -sfn ../web-extension-client-a current-client || true
-RUN npm run build
+COPY web-container/package.json web-container/package-lock.json ./web-container/
+COPY web-modules/package.json web-modules/package-lock.json ./web-modules/
+COPY web-modules/shared/package.json ./web-modules/shared/
+COPY web-modules/modules/<module>/package.json ./web-modules/modules/<module>/   # one line per module
+COPY web-extension-client-a/package.json web-extension-client-a/package-lock.json ./web-extension-client-a/
+RUN cd web-container && npm ci
+RUN cd web-modules && npm ci
+RUN cd web-extension-client-a && npm ci
+COPY web-container ./web-container
+COPY web-modules ./web-modules
+COPY web-extension-client-a ./web-extension-client-a
+RUN cd web-container \
+    && ln -sfn ../web-extension-client-a current-client \
+    && npm run build:client-a
 
 FROM nginx:1.27-alpine
-COPY --from=builder /app/dist/client-a /usr/share/nginx/html
-COPY docker/entrypoint.sh /docker-entrypoint.d/40-generate-config.sh
-RUN chmod +x /docker-entrypoint.d/40-generate-config.sh
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/web-container/dist/client-a /usr/share/nginx/html
+COPY web-container/nginx.conf /etc/nginx/conf.d/default.conf
+COPY web-container/docker/entrypoint.sh /docker-entrypoint.d/40-generate-config.sh
 EXPOSE 80
 ```
 
-**Entrypoint** generates `/config.json` from env vars:
-
-```sh
-#!/bin/sh
-set -e
-CONFIG_FILE=/usr/share/nginx/html/config.json
-CLIENT="${VITE_CLIENT:-client-a}"
-MODULES="${VITE_MODULES:-user-management}"
-API_BASE="${VITE_API_BASE:-https://dummyjson.com}"
-# ... generate JSON
-cat > "$CONFIG_FILE" <<EOF
-{
-  "client": "$CLIENT",
-  "modules": $MODULES_JSON,
-  "apiBase": "$API_BASE"
-}
-EOF
-```
+- New module → add the `COPY` line + run `npm run check:dockerfile` (guard).
+- `entrypoint.sh` generates `/config.json` at container start from env (`VITE_CLIENT`, `VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`).
 
 ### 16.3 Run Container
 
 ```bash
 docker run -p 8080:80 \
   -e VITE_CLIENT=client-a \
-  -e VITE_MODULES=user-management,product-management \
+  -e VITE_MODULES=user-management,product-management,module-sample \
   -e VITE_API_BASE=https://staging-api.example.com \
-  myorg-web-client-a:latest
+  -e VITE_ENABLE_AUDIT_LIVE=true \
+  myorg.azurecr.io/arsi-web-client-a:<tag>
 ```
 
 ### 16.4 Deployment Targets
 
-| Environment | Image | Config Source       |
-| ----------- | ----- | ------------------- |
-| Staging     | Same  | K8s ConfigMap / env |
-| Production  | Same  | K8s ConfigMap / env |
+| Environment | Image            | Config Source             |
+| ----------- | ---------------- | ------------------------- |
+| Staging     | Same (`<tag>`)   | Container env / compose   |
+| Production  | the same image, promoted | Container env / compose |
 
-One image, many environments. Config is injected when the container starts.
+One image, many environments. Config is injected when the container starts (no rebuild); TLS/reverse proxy is handled by the host. Deployment today is via Docker (Kubernetes is not active yet — see `DEPLOYMENT-GUIDE.en.md` §8).
 
 ---
 
@@ -1120,24 +1121,33 @@ steps:
       versionSpec: "20.x"
 
   - script: |
+      cd $(Pipeline.Workspace)/web-modules && npm ci
+      cd $(Pipeline.Workspace)/web-extension-client-a && npm ci
       cd $(Pipeline.Workspace)/web-container
       ln -sfn ../web-extension-client-a current-client
       npm ci
-      npm run build:client-a
-    displayName: Build
+    displayName: Install dependencies
+
+  - script: |
+      cd $(Pipeline.Workspace)/web-modules && npm run typecheck && npm test && npm run lint
+      cd $(Pipeline.Workspace)/web-extension-client-a && npm run typecheck && npm test && npm run lint
+      cd $(Pipeline.Workspace)/web-container
+      npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
+    displayName: Verify and build
 
   - task: Docker@2
     inputs:
       command: buildAndPush
-      repository: myorg-web-client-a
-      tags: $(Build.BuildId)
-
-  - task: KubernetesManifest@1
-    inputs:
-      action: deploy
-      manifests: k8s/staging.yaml
-      containers: myorg.azurecr.io/myorg-web-client-a:$(Build.BuildId)
+      repository: $(dockerRepository)
+      dockerfile: $(Pipeline.Workspace)/web-container/Dockerfile
+      buildContext: $(Pipeline.Workspace)      # MUST be the workspace root
+      tags: |
+        $(Build.BuildId)
 ```
+
+- `buildContext` **must** be the workspace root (the Dockerfile COPYs 3 repos).
+- `check:dockerfile` in the verify stage prevents build failures when a module is missing its COPY line.
+- The `KubernetesManifest` step in the original pipeline file is still a **scaffold** (deployment today is Docker). Details: `DEPLOYMENT-GUIDE.en.md` §8.
 
 ### 17.2 Pipeline Structure
 
@@ -1527,9 +1537,11 @@ web-extension-client-a/
 
 ---
 
-**Document version**: 0.2.0
-**Last updated**: 2026-09-25
+**Document version**: 0.2.1
+**Last updated**: 2026-10-01
 
 **Changelog:**
 
+- **0.2.1** — Deployment sections (§16/§17) synced with the actual Dockerfile & pipeline (workspace-root build context, `check:dockerfile`, Docker as the deployment target); link to `DEPLOYMENT-GUIDE.en.md`.
+- **0.2.0** — Generated loader map (`moduleLoaders.generated.ts` + wildcard aliases), module-sample (reference module), 3-tier extension override (slot → route → service wrapper), and wiring docs sync.
 - **0.1.0** — Initial architecture guide. Covers layer architecture, boot sequence, DI, state management, data fetching, service registry, override mechanisms, build & deployment, CI/CD, governance, and development workflow.

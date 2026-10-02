@@ -1,6 +1,6 @@
 # Developer Guide — Building Modules & Extensions
 
-**Version**: 0.7.2
+**Version**: 0.7.3
 **Audience**: Developers of `web-modules`, `web-extension-<client>`
 **Related documents**: `ARCHITECTURE.md` (why & how), `CONTRACT.md` (hard rules — violations = PR rejected)
 
@@ -69,6 +69,7 @@ cd ../web-extension-client-a && npm install
 | `ARCHITECTURE.md` | Philosophy, layers, boot sequence, roadmap |
 | `CONTRACT.md` | Hard rules per layer, naming, governance |
 | `DEVELOPER-GUIDE.md` (this) | Practical steps to build a module/extension |
+| `docs/DEPLOYMENT-GUIDE.en.md` | DevOps deployment: Docker build/run, env, CI, rollback |
 | `docs/phase.02-rbac-navigation.md` | Phase 2 plan: Keycloak RBAC + database-driven navigation |
 
 ---
@@ -1078,5 +1079,5 @@ Fastest path: copy the pilot module/extension that is closest, then rename & fil
 
 ---
 
-**Document version**: 0.7.2
-**Last updated**: 2026-09-25
+**Document version**: 0.7.3
+**Last updated**: 2026-10-01

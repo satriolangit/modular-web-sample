@@ -1,6 +1,6 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.7.2
+**Version**: 0.7.3
 **Audience**: Developer `web-modules`, `web-extension-<client>`
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
 
@@ -69,6 +69,7 @@ cd ../web-extension-client-a && npm install
 | `ARCHITECTURE.md` | Filosofi, layer, boot sequence, roadmap |
 | `CONTRACT.md` | Aturan keras per layer, naming, governance |
 | `DEVELOPER-GUIDE.md` (ini) | Langkah praktis membuat module/extension |
+| `docs/DEPLOYMENT-GUIDE.md` | Deployment DevOps: Docker build/run, env, CI, rollback |
 | `docs/phase.02-rbac-navigation.md` | Rencana Fase 2: Keycloak RBAC + navigasi dari database |
 
 ---
@@ -1078,5 +1079,5 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.7.2
-**Last updated**: 2026-09-25
+**Document version**: 0.7.3
+**Last updated**: 2026-10-01
