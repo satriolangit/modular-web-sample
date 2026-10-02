@@ -2,7 +2,7 @@
 
 ARG BASE_VERSION=0.0.0
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 ARG BASE_VERSION
 WORKDIR /app
 
