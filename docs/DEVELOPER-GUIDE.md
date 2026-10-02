@@ -43,7 +43,7 @@ Repo **wajib bersebelahan** selama memakai path mapping.
 
 ### 1.2 Prasyarat
 
-- Node.js 20.x (Docker/CI memakai `node:20-alpine`; `engines: ">=20"`).
+- Node.js 22.x (Docker/CI memakai `node:22-alpine`; jsdom@30/undici@8 butuh ≥22.22; `engines: ">=20"` di package.json).
 - npm 10+.
 
 ### 1.3 Setup pertama kali
@@ -991,7 +991,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | `init` jalan dua kali saat dev | React StrictMode. Container sudah `runOnce`; module/extension tetap **wajib** punya guard `initialized`. |
 | Perubahan tidak muncul setelah ganti client | Symlink `current-client` berubah → restart dev server. |
 | `current-client` menunjuk extension yang salah | Salah nama `CLIENT` atau link lama tertinggal. Cek `readlink web-container/current-client`; ulangi `npm run link:client-a` / `CLIENT=<client> npm run link:client`, lalu restart dev server. |
-| Engine warning saat `npm install` | Node lokal > versi target beberapa paket; aman diabaikan selama test lulus. CI/Docker memakai Node 20. |
+| Engine warning saat `npm install` | Node lokal > versi target beberapa paket; aman diabaikan selama test lulus. CI/Docker memakai Node 22. |
 | Mutasi DummyJSON "tidak tersimpan" | Memang simulasi (create/update/delete tidak persist). Pilot memakai strategi optimistic cache + rollback; saat backend nyata tambahkan `invalidateQueries` di `onSettled`. |
 | Search Topbar tidak memfilter produk | Listener `containerEvents.searchChanged` tidak ter-register (cek `init`) atau modul product tidak aktif di `config.json`. Listen lewat konstanta, bukan string literal. |
 | Duplikat paket di bundle / chunk membengkak | Library di-import lintas tree tanpa dedupe. Cek `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map`; tambahkan ke `resolve.dedupe` + samakan versi (CONTRACT §1.6). |

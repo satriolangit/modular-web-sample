@@ -43,7 +43,7 @@ The repos **must sit side by side** as long as path mapping is used.
 
 ### 1.2 Prerequisites
 
-- Node.js 20.x (Docker/CI uses `node:20-alpine`; `engines: ">=20"`).
+- Node.js 22.x (Docker/CI uses `node:22-alpine`; jsdom@30/undici@8 need ≥22.22; `engines: ">=20"` in package.json).
 - npm 10+.
 
 ### 1.3 First-time setup
@@ -991,7 +991,7 @@ Full example: `product-management/events/containerSearch.test.ts`.
 | `init` runs twice during dev | React StrictMode. The container already runs it `runOnce`; modules/extensions still **must** have an `initialized` guard. |
 | Changes do not appear after switching clients | The `current-client` symlink changed → restart the dev server. |
 | `current-client` points at the wrong extension | Wrong `CLIENT` name or a stale link. Check `readlink web-container/current-client`; re-run `npm run link:client-a` / `CLIENT=<client> npm run link:client`, then restart the dev server. |
-| Engine warnings during `npm install` | Local Node is newer than some packages' target; safe to ignore as long as tests pass. CI/Docker uses Node 20. |
+| Engine warnings during `npm install` | Local Node is newer than some packages' target; safe to ignore as long as tests pass. CI/Docker uses Node 22. |
 | DummyJSON mutations "do not persist" | That is the simulation (create/update/delete do not persist). The pilot uses optimistic cache + rollback; with a real backend add `invalidateQueries` in `onSettled`. |
 | Topbar search does not filter products | The `containerEvents.searchChanged` listener is not registered (check `init`) or the product module is not enabled in `config.json`. Listen via the constant, not a string literal. |
 | Duplicate packages in the bundle / chunks growing | A library is imported across trees without dedupe. Check `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map`; add it to `resolve.dedupe` + align versions (CONTRACT §1.6). |
