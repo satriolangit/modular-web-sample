@@ -1,6 +1,6 @@
 # Architecture Guide — Modular Web Platform
 
-**Version**: 0.1.0
+**Version**: 0.3.0
 **Audience**: Developer, tech lead, arsitek
 **Status**: Living document
 
@@ -44,7 +44,7 @@ Platform web modular untuk **multiple client** dengan core yang stabil dan custo
 - 5+ client dengan customization masing-masing
 - React 19 + Vite + TypeScript
 - Backend microservice diakses via path-based routing (nginx)
-- Deploy per client via CI/CD Azure DevOps
+- Deploy per client via CI/CD generik (image client `FROM` base image)
 
 ### 1.2 Mengapa modular
 
@@ -59,7 +59,7 @@ Dengan modular:
 
 - Base stabil, extension terisolasi.
 - Bundle selective per client.
-- Onboarding cepat: clone 3 repo kecil.
+- Onboarding cepat: repo base + repo extension kecil.
 - Product dan client development berjalan paralel.
 
 ### 1.3 Filosofi
@@ -998,7 +998,7 @@ events.emit("client-a.audit.requested", { userId });
 
 ### 15.4 Symlink `current-client`
 
-Container punya symlink:
+**Dev lokal** — container punya symlink:
 
 ```
 web-container/current-client → ../web-extension-<client>
@@ -1010,6 +1010,8 @@ Ganti client:
 npm run link:client-a
 npm run link:client-b
 ```
+
+**Di image builder** — repo extension selalu di-COPY ke `/app/extension` (bukan `web-extension-<client>`), lalu `web-container/current-client → ../extension` dibuat saat build. Karena itu alias `@arsi/extension` dan path mapping lain tetap valid tanpa perubahan.
 
 ### 15.5 Aturan
 
@@ -1028,49 +1030,66 @@ Panduan langkah lengkap untuk DevOps (build, run Docker, CI, rollback, smoke tes
 
 ```bash
 cd web-container
-ln -sfn ../web-extension-client-a current-client
-npm run build:client-a
+npm run link:client-a        # symlink current-client -> ../web-extension-client-a
+npm run build:client-a       # output: dist/client-a/
 ```
 
-Output: `web-container/dist/client-a/`.
+Base default (extension `web-extension-base`, client `base`):
+
+```bash
+cd web-container
+CLIENT=base npm run link:client
+CLIENT=base npm run build:client
+```
 
 ### 16.2 Docker
 
-Build context = **workspace root** (Dockerfile meng-COPY 3 repo sekaligus):
+Base dibangun **sekali** dari root repo base: satu `Dockerfile` multi-target menghasilkan **2 image**; extension membangun **1 image client** `FROM` base image tersebut. Tidak ada pipeline yang meng-COPY 3 repo sekaligus.
+
+| Image | Dibangun oleh | Isi |
+| ----- | ------------- | --- |
+| `<org>/arsi-web-base:<ver>-builder` | `ci/build-base.sh` (stage `builder`, `node:22-alpine`) | source base (`web-container`, `web-modules`, `web-extension-base`) + `node_modules` + `/app/BASE_VERSION` |
+| `<org>/arsi-web-base:<ver>` | `ci/build-base.sh` (stage `runtime`, `nginx:1.27-alpine`) | SPA default (`web-extension-base`) + `nginx.conf` + `entrypoint.sh` |
+| `<org>/arsi-web-<client>:<buildId>` | `ci/build-client.sh` (repo extension) | nginx + dist client (1 image), `ENV VITE_CLIENT=<client>` |
 
 ```bash
-docker build -f web-container/Dockerfile -t myorg.azurecr.io/arsi-web-client-a:<tag> .
+# Base — dari root repo base
+ORG=<dockerhub-org> VERIFY=1 PUSH=1 ./ci/build-base.sh
+
+# Extension — dari root repo extension (repo base tidak di-checkout)
+ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
 ```
 
-Dockerfile aktual (ringkas):
+Dockerfile extension (ringkas):
 
 ```dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY web-container/package.json web-container/package-lock.json ./web-container/
-COPY web-modules/package.json web-modules/package-lock.json ./web-modules/
-COPY web-modules/shared/package.json ./web-modules/shared/
-COPY web-modules/modules/<module>/package.json ./web-modules/modules/<module>/   # satu baris per modul
-COPY web-extension-client-a/package.json web-extension-client-a/package-lock.json ./web-extension-client-a/
-RUN cd web-container && npm ci
-RUN cd web-modules && npm ci
-RUN cd web-extension-client-a && npm ci
-COPY web-container ./web-container
-COPY web-modules ./web-modules
-COPY web-extension-client-a ./web-extension-client-a
-RUN cd web-container \
-    && ln -sfn ../web-extension-client-a current-client \
-    && npm run build:client-a
+ARG BASE_BUILDER_IMAGE=arsi-web-base:0.0.0-builder
+ARG BASE_RUNTIME_IMAGE=arsi-web-base:0.0.0
+ARG CLIENT_NAME=client
 
-FROM nginx:1.27-alpine
-COPY --from=builder /app/web-container/dist/client-a /usr/share/nginx/html
-COPY web-container/nginx.conf /etc/nginx/conf.d/default.conf
-COPY web-container/docker/entrypoint.sh /docker-entrypoint.d/40-generate-config.sh
-EXPOSE 80
+FROM ${BASE_BUILDER_IMAGE} AS builder
+COPY package.json package-lock.json /app/extension/
+RUN cd /app/extension && npm ci
+COPY . /app/extension
+RUN cd /app/web-container && ln -sfn ../extension current-client
+RUN cd /app/extension && npm run typecheck && npm run test --if-present && npm run lint
+RUN cd /app/web-container \
+    && npm run check:base \
+    && CLIENT=${CLIENT_NAME} npm run build:client
+
+FROM ${BASE_RUNTIME_IMAGE} AS runtime
+RUN rm -rf /usr/share/nginx/html
+COPY --from=builder /app/web-container/dist/${CLIENT_NAME} /usr/share/nginx/html
+ENV VITE_CLIENT=${CLIENT_NAME}
 ```
 
-- Modul baru → tambah baris `COPY` + jalankan `npm run check:dockerfile` (guard).
-- `entrypoint.sh` generate `/config.json` saat container start dari env (`VITE_CLIENT`, `VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`).
+Aturan penting:
+
+- **`check:base`** membandingkan `manifest.json:baseVersion` di repo extension dengan `/app/BASE_VERSION` di builder image; mismatch = build gagal.
+- **Versi base dipin exact** — tag `<ver>` berasal dari `web-container/package.json:version`; image client tidak dibangun terhadap base "latest".
+- Verifikasi extension (typecheck/test/lint) berjalan **di dalam builder image**, dijamin terhadap base yang sama.
+- Base image private → `docker login` sebelum build extension.
+- Modul baru di repo base → tambah baris `COPY` di `Dockerfile` root + `npm run check:dockerfile`.
 
 ### 16.3 Run Container
 
@@ -1080,89 +1099,64 @@ docker run -p 8080:80 \
   -e VITE_MODULES=user-management,product-management,module-sample \
   -e VITE_API_BASE=https://staging-api.example.com \
   -e VITE_ENABLE_AUDIT_LIVE=true \
-  myorg.azurecr.io/arsi-web-client-a:<tag>
+  docker.io/<org>/arsi-web-client-a:<tag>
 ```
+
+Base runtime juga bisa dijalankan standalone (extension default, client `base`): `docker.io/<org>/arsi-web-base:<ver>`.
 
 ### 16.4 Deployment Targets
 
-| Environment | Image            | Config Source             |
-| ----------- | ---------------- | ------------------------- |
-| Staging     | Sama (`<tag>`)   | Env container / compose   |
+| Environment | Image                        | Config Source             |
+| ----------- | ---------------------------- | ------------------------- |
+| Staging     | Client image (`<buildId>`)   | Env container / compose   |
 | Production  | image yang sama, dipromosikan | Env container / compose |
 
-Satu image, banyak environment. Config di-inject saat container start (tanpa rebuild); TLS/reverse proxy ditangani host. Deployment saat ini via Docker (Kubernetes belum aktif — lihat `DEPLOYMENT-GUIDE.md` §8).
+Satu image client, banyak environment. Config di-inject saat container start (tanpa rebuild); TLS/reverse proxy ditangani host. Deployment saat ini via Docker — detail run/promosi/rollback di `DEPLOYMENT-GUIDE.md` §5–§7.
 
 ---
 
 ## 17. CI/CD
 
-### 17.1 Pipeline per Client
+### 17.1 Pipeline Generik
 
-Setiap repo `web-extension-<client>` punya pipeline sendiri di Azure DevOps.
+Tidak ada YAML platform spesifik; pipeline apa pun (Azure DevOps, GitHub Actions, Jenkins) cukup memanggil skrip shell di tiap repo. Detail: `DEPLOYMENT-GUIDE.md` §8.
 
-```yaml
-trigger:
-  branches:
-    include: [main]
+**Repo base** (`web-container` + `web-modules` + `web-extension-base`):
 
-pool:
-  vmImage: ubuntu-latest
+| Langkah | Perintah |
+| ------- | -------- |
+| Checkout repo base | `git clone <repo-base>` |
+| Node 22 di runner (untuk `VERIFY=1`) | `actions/setup-node@v4` / `NodeTool@0` / dsb. |
+| Login registry | `docker login` (token dari secret CI) |
+| Build + push 2 image base | `ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh` |
 
-steps:
-  - checkout: self
-    path: web-extension-client-a
-  - checkout: git://MyOrg/web-container
-    path: web-container
-  - checkout: git://MyOrg/web-modules
-    path: web-modules
+**Repo extension** (`web-extension-<client>`):
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: "20.x"
+| Langkah | Perintah |
+| ------- | -------- |
+| Checkout repo extension | `git clone <repo-extension-<client>>` |
+| Login registry (base image private) | `docker login` (token dari secret CI) |
+| Build + push image client | `ORG=<org> PUSH=1 BUILD_ID=$CI_BUILD_ID ./ci/build-client.sh` |
+| Smoke test | `docker run` image hasil → `curl -sf localhost:8080/config.json` (+ `/`, deep link) sebelum/sesudah push |
 
-  - script: |
-      cd $(Pipeline.Workspace)/web-modules && npm ci
-      cd $(Pipeline.Workspace)/web-extension-client-a && npm ci
-      cd $(Pipeline.Workspace)/web-container
-      ln -sfn ../web-extension-client-a current-client
-      npm ci
-    displayName: Install dependencies
-
-  - script: |
-      cd $(Pipeline.Workspace)/web-modules && npm run typecheck && npm test && npm run lint
-      cd $(Pipeline.Workspace)/web-extension-client-a && npm run typecheck && npm test && npm run lint
-      cd $(Pipeline.Workspace)/web-container
-      npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
-    displayName: Verify and build
-
-  - task: Docker@2
-    inputs:
-      command: buildAndPush
-      repository: $(dockerRepository)
-      dockerfile: $(Pipeline.Workspace)/web-container/Dockerfile
-      buildContext: $(Pipeline.Workspace)      # WAJIB workspace root
-      tags: |
-        $(Build.BuildId)
-```
-
-- `buildContext` **wajib** workspace root (Dockerfile meng-COPY 3 repo).
-- `check:dockerfile` di tahap verify mencegah build gagal karena modul lupa di-COPY.
-- Langkah `KubernetesManifest` di file pipeline asli masih **scaffold** (deployment saat ini Docker). Detail: `DEPLOYMENT-GUIDE.md` §8.
+- Pipeline extension **tidak** men-checkout repo base; build hanya pull base image dari registry.
+- Verifikasi extension (typecheck/test/lint) berjalan di dalam builder image saat `ci/build-client.sh`.
+- `check:base` memastikan base yang dipakai sesuai `manifest.json:baseVersion`; mismatch = pipeline gagal.
+- Adopsi base baru = PR di repo extension yang menaikkan `baseVersion` (lihat §19.4).
 
 ### 17.2 Struktur Pipeline
 
-| Repo                     | Pipeline                                            |
-| ------------------------ | --------------------------------------------------- |
-| `web-container`          | Build + test container, publish base image          |
-| `web-modules`            | Build + test modul, publish artifact                |
-| `web-extension-<client>` | Build + test extension, build & deploy image client |
-| `web-extension-template` | Tidak ada pipeline                                  |
+| Repo                                                       | Pipeline                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------ |
+| `web-container` + `web-modules` + `web-extension-base` (repo base) | Build + test base, publish 2 image base (builder + runtime)  |
+| `web-extension-<client>`                                   | Build + test extension di builder image, build & push image client |
+| `web-extension-template`                                   | Tidak ada pipeline                                           |
 
 ### 17.3 Artifact
 
-- Container: base image
-- Modul: npm artifact (opsional, untuk migrasi registry nanti)
-- Extension: Docker image per client
+- Repo base: builder image (`<ver>-builder`, `<sha>-builder`) + runtime image (`<ver>`, `<sha>`)
+- Repo extension: Docker image client per client (`<buildId>`)
+- Tidak ada artifact npm untuk modul — modul ter-bundle di builder image dan ikut ter-build di image client.
 
 ---
 
@@ -1242,11 +1236,15 @@ npm run dev:client-a
 
 ### 19.2 Ganti Client
 
+**Dev lokal** (symlink, tanpa Docker):
+
 ```bash
 cd web-container
 npm run link:client-b
 npm run dev:client-b
 ```
+
+**Docker/CI** tidak memakai symlink di repo: tiap repo extension membangun image client sendiri via `ci/build-client.sh` (`FROM` base image; folder extension di `/app/extension`, symlink dibuat saat build). Lihat §16.2.
 
 ### 19.3 Tambah Modul Baru
 
@@ -1259,16 +1257,13 @@ npm run dev:client-b
 
 ### 19.4 Tambah Client Baru
 
+1. Salin `web-extension-template` menjadi repo baru `web-extension-<client>` (mis. `web-extension-client-x`), lalu jadikan repo Git sendiri.
+2. Isi `manifest.json`: `client` = `<client>`, `baseVersion` = tag base saat ini (exact, mis. `0.1.0`).
+3. Push repo dan connect ke CI; pipeline memanggil `ci/build-client.sh` untuk build & push image client (`FROM` base image). **Repo base tidak dibangun ulang** dan client lain tidak terpengaruh.
+4. Dev lokal opsional:
+
 ```bash
-git clone <web-extension-template-url> web-extension-client-x
-cd web-extension-client-x
-rm -rf .git && git init
-
-# Edit manifest.json, package.json, .azure-pipelines.yml
-# Push ke repo baru
-# Setup pipeline di Azure DevOps
-
-cd ../web-container
+cd web-container
 npm run link:client-x
 VITE_CLIENT=client-x VITE_MODULES=user-management npm run dev
 ```
@@ -1405,7 +1400,6 @@ web-container/
 ├── index.html
 ├── package.json
 ├── CONTRACT.md
-├── Dockerfile
 ├── nginx.conf
 ├── docker/
 │   └── entrypoint.sh
@@ -1477,10 +1471,11 @@ web-extension-client-a/
 ├── aliases.cjs
 ├── tsconfig.json
 ├── package.json
-├── manifest.json
+├── manifest.json               # client + baseVersion (pin exact ke base image)
 ├── .eslintrc.cjs
-├── .azure-pipelines.yml
-├── README.md
+├── Dockerfile                  # FROM base <ver>-builder → FROM base <ver>
+├── ci/
+│   └── build-client.sh
 └── src/
     ├── index.tsx
     ├── components/
@@ -1513,7 +1508,7 @@ web-extension-client-a/
 | Service name      | `<module>` atau `<client>.<service>` | `user`, `client-a.audit`           |
 | Query key root    | `[<module>, <entity>]`               | `['user-management', 'user']`      |
 | Store persist key | `<layer>:<name>`                     | `module:user-management`           |
-| Docker image      | `<org>-web-<client>`                 | `myorg-web-client-a`               |
+| Docker image      | `<org>/arsi-web-<client>`            | `<org>/arsi-web-client-a`          |
 
 ---
 
@@ -1537,11 +1532,12 @@ web-extension-client-a/
 
 ---
 
-**Document version**: 0.2.1
-**Last updated**: 2026-10-01
+**Document version**: 0.3.0
+**Last updated**: 2026-10-02
 
 **Changelog:**
 
+- **0.3.0** — Build & Deployment (§15.4/§16/§17/§19.2/§19.4) disinkronkan dengan model base image: base multi-target (2 image: builder + runtime) → extension `FROM` base, `check:base`/`baseVersion`, CI vendor-neutral (`ci/build-base.sh` / `ci/build-client.sh`), Registry Docker Hub.
 - **0.2.1** — Deployment section (§16/§17) disinkronkan dengan Dockerfile & pipeline aktual (build context workspace root, `check:dockerfile`, Docker sebagai target deploy); link ke `DEPLOYMENT-GUIDE.md`.
 - **0.2.0** — Generated loader map (`moduleLoaders.generated.ts` + wildcard alias), module-sample (reference module), extension 3-tier override (slot → route → service wrapper), dan sync dokumen wiring.
 - **0.1.0** — Initial architecture guide. Mencakup layer architecture, boot sequence, DI, state management, data fetching, service registry, override mechanisms, build & deployment, CI/CD, governance, dan development workflow.

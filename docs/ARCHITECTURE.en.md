@@ -1,6 +1,6 @@
 # Architecture Guide — Modular Web Platform
 
-**Version**: 0.1.0
+**Version**: 0.3.0
 **Audience**: Developer, tech lead, architect
 **Status**: Living document
 
@@ -44,7 +44,7 @@ Modular web platform for **multiple clients** with a stable core and isolated pe
 - 5+ clients each with their own customization
 - React 19 + Vite + TypeScript
 - Backend microservices accessed via path-based routing (nginx)
-- Per-client deploy via CI/CD Azure DevOps
+- Per-client deploy via generic CI/CD (client image `FROM` the base image)
 
 ### 1.2 Why Modular
 
@@ -59,7 +59,7 @@ With modular:
 
 - Stable base, isolated extension.
 - Selective bundle per client.
-- Fast onboarding: clone 3 small repos.
+- Fast onboarding: a small base repo + extension repo.
 - Product and client development run in parallel.
 
 ### 1.3 Philosophy
@@ -998,7 +998,7 @@ events.emit("client-a.audit.requested", { userId });
 
 ### 15.4 `current-client` Symlink
 
-The container has a symlink:
+**Local dev** — the container has a symlink:
 
 ```
 web-container/current-client → ../web-extension-<client>
@@ -1010,6 +1010,8 @@ Switch client:
 npm run link:client-a
 npm run link:client-b
 ```
+
+**In the builder image** — the extension repo is always COPYed to `/app/extension` (not `web-extension-<client>`), then `web-container/current-client → ../extension` is created at build time. That keeps the `@arsi/extension` alias and all other path mappings valid with no changes.
 
 ### 15.5 Rules
 
@@ -1028,49 +1030,66 @@ Full step-by-step guide for DevOps (build, run Docker, CI, rollback, smoke test)
 
 ```bash
 cd web-container
-ln -sfn ../web-extension-client-a current-client
-npm run build:client-a
+npm run link:client-a        # symlink current-client -> ../web-extension-client-a
+npm run build:client-a       # output: dist/client-a/
 ```
 
-Output: `web-container/dist/client-a/`.
+Default base (extension `web-extension-base`, client `base`):
+
+```bash
+cd web-container
+CLIENT=base npm run link:client
+CLIENT=base npm run build:client
+```
 
 ### 16.2 Docker
 
-Build context = the **workspace root** (the Dockerfile COPYs all 3 repos):
+The base is built **once** from the base repo root: one multi-target `Dockerfile` produces **2 images**; each extension builds **1 client image** `FROM` that base. No pipeline COPYs all 3 repos at once anymore.
+
+| Image | Built by | Contents |
+| ----- | -------- | -------- |
+| `<org>/arsi-web-base:<ver>-builder` | `ci/build-base.sh` (`builder` stage, `node:22-alpine`) | base source (`web-container`, `web-modules`, `web-extension-base`) + `node_modules` + `/app/BASE_VERSION` |
+| `<org>/arsi-web-base:<ver>` | `ci/build-base.sh` (`runtime` stage, `nginx:1.27-alpine`) | default SPA (`web-extension-base`) + `nginx.conf` + `entrypoint.sh` |
+| `<org>/arsi-web-<client>:<buildId>` | `ci/build-client.sh` (extension repo) | nginx + client dist (1 image), `ENV VITE_CLIENT=<client>` |
 
 ```bash
-docker build -f web-container/Dockerfile -t myorg.azurecr.io/arsi-web-client-a:<tag> .
+# Base — from the base repo root
+ORG=<dockerhub-org> VERIFY=1 PUSH=1 ./ci/build-base.sh
+
+# Extension — from the extension repo root (base repo is not checked out)
+ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
 ```
 
-Actual Dockerfile (abridged):
+Extension Dockerfile (abridged):
 
 ```dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY web-container/package.json web-container/package-lock.json ./web-container/
-COPY web-modules/package.json web-modules/package-lock.json ./web-modules/
-COPY web-modules/shared/package.json ./web-modules/shared/
-COPY web-modules/modules/<module>/package.json ./web-modules/modules/<module>/   # one line per module
-COPY web-extension-client-a/package.json web-extension-client-a/package-lock.json ./web-extension-client-a/
-RUN cd web-container && npm ci
-RUN cd web-modules && npm ci
-RUN cd web-extension-client-a && npm ci
-COPY web-container ./web-container
-COPY web-modules ./web-modules
-COPY web-extension-client-a ./web-extension-client-a
-RUN cd web-container \
-    && ln -sfn ../web-extension-client-a current-client \
-    && npm run build:client-a
+ARG BASE_BUILDER_IMAGE=arsi-web-base:0.0.0-builder
+ARG BASE_RUNTIME_IMAGE=arsi-web-base:0.0.0
+ARG CLIENT_NAME=client
 
-FROM nginx:1.27-alpine
-COPY --from=builder /app/web-container/dist/client-a /usr/share/nginx/html
-COPY web-container/nginx.conf /etc/nginx/conf.d/default.conf
-COPY web-container/docker/entrypoint.sh /docker-entrypoint.d/40-generate-config.sh
-EXPOSE 80
+FROM ${BASE_BUILDER_IMAGE} AS builder
+COPY package.json package-lock.json /app/extension/
+RUN cd /app/extension && npm ci
+COPY . /app/extension
+RUN cd /app/web-container && ln -sfn ../extension current-client
+RUN cd /app/extension && npm run typecheck && npm run test --if-present && npm run lint
+RUN cd /app/web-container \
+    && npm run check:base \
+    && CLIENT=${CLIENT_NAME} npm run build:client
+
+FROM ${BASE_RUNTIME_IMAGE} AS runtime
+RUN rm -rf /usr/share/nginx/html
+COPY --from=builder /app/web-container/dist/${CLIENT_NAME} /usr/share/nginx/html
+ENV VITE_CLIENT=${CLIENT_NAME}
 ```
 
-- New module → add the `COPY` line + run `npm run check:dockerfile` (guard).
-- `entrypoint.sh` generates `/config.json` at container start from env (`VITE_CLIENT`, `VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`).
+Key rules:
+
+- **`check:base`** compares `manifest.json:baseVersion` in the extension repo against `/app/BASE_VERSION` in the builder image; a mismatch fails the build.
+- **The base version is pinned exactly** — tag `<ver>` comes from `web-container/package.json:version`; a client image is never built against `latest`.
+- Extension verification (typecheck/test/lint) runs **inside the builder image**, guaranteed against the same base.
+- Private base image → `docker login` before building an extension.
+- New module in the base repo → add a `COPY` line in the root `Dockerfile` + run `npm run check:dockerfile`.
 
 ### 16.3 Run Container
 
@@ -1080,89 +1099,64 @@ docker run -p 8080:80 \
   -e VITE_MODULES=user-management,product-management,module-sample \
   -e VITE_API_BASE=https://staging-api.example.com \
   -e VITE_ENABLE_AUDIT_LIVE=true \
-  myorg.azurecr.io/arsi-web-client-a:<tag>
+  docker.io/<org>/arsi-web-client-a:<tag>
 ```
+
+The base runtime can also run standalone (default extension, client `base`): `docker.io/<org>/arsi-web-base:<ver>`.
 
 ### 16.4 Deployment Targets
 
-| Environment | Image            | Config Source             |
-| ----------- | ---------------- | ------------------------- |
-| Staging     | Same (`<tag>`)   | Container env / compose   |
-| Production  | the same image, promoted | Container env / compose |
+| Environment | Image                         | Config Source             |
+| ----------- | ----------------------------- | ------------------------- |
+| Staging     | Client image (`<buildId>`)    | Container env / compose   |
+| Production  | the same image, promoted      | Container env / compose   |
 
-One image, many environments. Config is injected when the container starts (no rebuild); TLS/reverse proxy is handled by the host. Deployment today is via Docker (Kubernetes is not active yet — see `DEPLOYMENT-GUIDE.en.md` §8).
+One client image, many environments. Config is injected when the container starts (no rebuild); TLS/reverse proxy is handled by the host. Deployment today is via Docker — see `DEPLOYMENT-GUIDE.en.md` §5–§7 for run/promotion/rollback details.
 
 ---
 
 ## 17. CI/CD
 
-### 17.1 Pipeline per Client
+### 17.1 Generic Pipeline
 
-Each `web-extension-<client>` repo has its own pipeline in Azure DevOps.
+There is no platform-specific YAML; any pipeline (Azure DevOps, GitHub Actions, Jenkins) just calls the shell scripts in each repo. Details: `DEPLOYMENT-GUIDE.en.md` §8.
 
-```yaml
-trigger:
-  branches:
-    include: [main]
+**Base repo** (`web-container` + `web-modules` + `web-extension-base`):
 
-pool:
-  vmImage: ubuntu-latest
+| Step | Command |
+| ---- | ------- |
+| Checkout base repo | `git clone <repo-base>` |
+| Node 22 on the runner (for `VERIFY=1`) | `actions/setup-node@v4` / `NodeTool@0` / etc. |
+| Registry login | `docker login` (token from CI secret) |
+| Build + push 2 base images | `ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh` |
 
-steps:
-  - checkout: self
-    path: web-extension-client-a
-  - checkout: git://MyOrg/web-container
-    path: web-container
-  - checkout: git://MyOrg/web-modules
-    path: web-modules
+**Extension repo** (`web-extension-<client>`):
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: "20.x"
+| Step | Command |
+| ---- | ------- |
+| Checkout extension repo | `git clone <repo-extension-<client>>` |
+| Registry login (private base image) | `docker login` (token from CI secret) |
+| Build + push client image | `ORG=<org> PUSH=1 BUILD_ID=$CI_BUILD_ID ./ci/build-client.sh` |
+| Smoke test | `docker run` the resulting image → `curl -sf localhost:8080/config.json` (+ `/`, deep link) before/after push |
 
-  - script: |
-      cd $(Pipeline.Workspace)/web-modules && npm ci
-      cd $(Pipeline.Workspace)/web-extension-client-a && npm ci
-      cd $(Pipeline.Workspace)/web-container
-      ln -sfn ../web-extension-client-a current-client
-      npm ci
-    displayName: Install dependencies
-
-  - script: |
-      cd $(Pipeline.Workspace)/web-modules && npm run typecheck && npm test && npm run lint
-      cd $(Pipeline.Workspace)/web-extension-client-a && npm run typecheck && npm test && npm run lint
-      cd $(Pipeline.Workspace)/web-container
-      npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
-    displayName: Verify and build
-
-  - task: Docker@2
-    inputs:
-      command: buildAndPush
-      repository: $(dockerRepository)
-      dockerfile: $(Pipeline.Workspace)/web-container/Dockerfile
-      buildContext: $(Pipeline.Workspace)      # MUST be the workspace root
-      tags: |
-        $(Build.BuildId)
-```
-
-- `buildContext` **must** be the workspace root (the Dockerfile COPYs 3 repos).
-- `check:dockerfile` in the verify stage prevents build failures when a module is missing its COPY line.
-- The `KubernetesManifest` step in the original pipeline file is still a **scaffold** (deployment today is Docker). Details: `DEPLOYMENT-GUIDE.en.md` §8.
+- The extension pipeline **does not** check out the base repo; the build only pulls the base image from the registry.
+- Extension verification (typecheck/test/lint) runs inside the builder image during `ci/build-client.sh`.
+- `check:base` ensures the base in use matches `manifest.json:baseVersion`; a mismatch fails the pipeline.
+- Adopting a new base = a PR in the extension repo bumping `baseVersion` (see §19.4).
 
 ### 17.2 Pipeline Structure
 
-| Repo                     | Pipeline                                            |
-| ------------------------ | --------------------------------------------------- |
-| `web-container`          | Build + test container, publish base image          |
-| `web-modules`            | Build + test modules, publish artifact              |
-| `web-extension-<client>` | Build + test extension, build & deploy client image |
-| `web-extension-template` | No pipeline                                         |
+| Repo                                                        | Pipeline                                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------- |
+| `web-container` + `web-modules` + `web-extension-base` (base repo) | Build + test base, publish 2 base images (builder + runtime)     |
+| `web-extension-<client>`                                    | Build + test extension in the builder image, build & push client image |
+| `web-extension-template`                                    | No pipeline                                                     |
 
 ### 17.3 Artifacts
 
-- Container: base image
-- Modules: npm artifact (optional, for a later registry migration)
-- Extension: Docker image per client
+- Base repo: builder image (`<ver>-builder`, `<sha>-builder`) + runtime image (`<ver>`, `<sha>`)
+- Extension repo: one Docker client image per client (`<buildId>`)
+- No npm artifact for modules — modules are bundled in the builder image and are built into the client image.
 
 ---
 
@@ -1242,11 +1236,15 @@ npm run dev:client-a
 
 ### 19.2 Switch Client
 
+**Local dev** (symlink, no Docker):
+
 ```bash
 cd web-container
 npm run link:client-b
 npm run dev:client-b
 ```
+
+**Docker/CI** does not use a repo symlink: each extension repo builds its own client image via `ci/build-client.sh` (`FROM` the base image; the extension folder is `/app/extension` and the symlink is created at build time). See §16.2.
 
 ### 19.3 Add a New Module
 
@@ -1259,16 +1257,13 @@ npm run dev:client-b
 
 ### 19.4 Add a New Client
 
+1. Copy `web-extension-template` into a new `web-extension-<client>` repo (e.g. `web-extension-client-x`), then make it its own Git repo.
+2. Fill in `manifest.json`: `client` = `<client>`, `baseVersion` = the current base tag (exact, e.g. `0.1.0`).
+3. Push the repo and connect it to CI; the pipeline calls `ci/build-client.sh` to build & push the client image (`FROM` the base image). **The base repo is not rebuilt** and other clients are unaffected.
+4. Optional local dev:
+
 ```bash
-git clone <web-extension-template-url> web-extension-client-x
-cd web-extension-client-x
-rm -rf .git && git init
-
-# Edit manifest.json, package.json, .azure-pipelines.yml
-# Push to the new repo
-# Set up the pipeline in Azure DevOps
-
-cd ../web-container
+cd web-container
 npm run link:client-x
 VITE_CLIENT=client-x VITE_MODULES=user-management npm run dev
 ```
@@ -1405,7 +1400,6 @@ web-container/
 ├── index.html
 ├── package.json
 ├── CONTRACT.md
-├── Dockerfile
 ├── nginx.conf
 ├── docker/
 │   └── entrypoint.sh
@@ -1477,10 +1471,11 @@ web-extension-client-a/
 ├── aliases.cjs
 ├── tsconfig.json
 ├── package.json
-├── manifest.json
+├── manifest.json               # client + baseVersion (exact pin to the base image)
 ├── .eslintrc.cjs
-├── .azure-pipelines.yml
-├── README.md
+├── Dockerfile                  # FROM base <ver>-builder → FROM base <ver>
+├── ci/
+│   └── build-client.sh
 └── src/
     ├── index.tsx
     ├── components/
@@ -1513,7 +1508,7 @@ web-extension-client-a/
 | Service name      | `<module>` or `<client>.<service>`   | `user`, `client-a.audit`           |
 | Query key root    | `[<module>, <entity>]`               | `['user-management', 'user']`      |
 | Store persist key | `<layer>:<name>`                     | `module:user-management`           |
-| Docker image      | `<org>-web-<client>`                 | `myorg-web-client-a`               |
+| Docker image      | `<org>/arsi-web-<client>`            | `<org>/arsi-web-client-a`          |
 
 ---
 
@@ -1537,11 +1532,12 @@ web-extension-client-a/
 
 ---
 
-**Document version**: 0.2.1
-**Last updated**: 2026-10-01
+**Document version**: 0.3.0
+**Last updated**: 2026-10-02
 
 **Changelog:**
 
+- **0.3.0** — Build & Deployment (§15.4/§16/§17/§19.2/§19.4) synced with the base image model: multi-target base (2 images: builder + runtime) → extension `FROM` base, `check:base`/`baseVersion`, vendor-neutral CI (`ci/build-base.sh` / `ci/build-client.sh`), Docker Hub registry.
 - **0.2.1** — Deployment sections (§16/§17) synced with the actual Dockerfile & pipeline (workspace-root build context, `check:dockerfile`, Docker as the deployment target); link to `DEPLOYMENT-GUIDE.en.md`.
 - **0.2.0** — Generated loader map (`moduleLoaders.generated.ts` + wildcard aliases), module-sample (reference module), 3-tier extension override (slot → route → service wrapper), and wiring docs sync.
 - **0.1.0** — Initial architecture guide. Covers layer architecture, boot sequence, DI, state management, data fetching, service registry, override mechanisms, build & deployment, CI/CD, governance, and development workflow.
