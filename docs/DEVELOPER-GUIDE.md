@@ -1,8 +1,8 @@
 # Panduan Developer — Membuat Module & Extension
 
-**Version**: 0.7.4
-**Audience**: Developer `web-modules`, `web-extension-<client>`
-**Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak)
+**Version**: 0.8.0
+**Audience**: Developer `web-modules`, `web-extension-<client>`, dan new joiner
+**Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak), `DEPLOYMENT-GUIDE.md` (build/CI), `VM-DEPLOYMENT-GUIDE.en.md` (deploy produksi di VM Linux)
 
 > Panduan ini adalah jalur cepat untuk menambah **module bisnis baru** atau **extension client** dengan aman. Semua contoh diambil dari kode nyata di workspace ini (`user-management`, `product-management`, `web-extension-client-a`).
 
@@ -10,6 +10,7 @@
 
 ## Daftar Isi
 
+0. [Onboarding: Dari Nol sampai Jalan](#0-onboarding-dari-nol-sampai-jalan)
 1. [Setup & Peta Workspace](#1-setup--peta-workspace)
 2. [Model Mental 5 Menit](#2-model-mental-5-menit)
 3. [Membuat Module Baru](#3-membuat-module-baru)
@@ -19,6 +20,132 @@
 7. [Troubleshooting](#7-troubleshooting)
 8. [Checklist PR](#8-checklist-pr)
 9. [Referensi & Contoh Hidup](#9-referensi--contoh-hidup)
+10. [Build Image Lokal & Smoke Test](#10-build-image-lokal--smoke-test)
+
+---
+
+## 0. Onboarding: Dari Nol sampai Jalan
+
+Bagian ini menuntun developer baru dari laptop kosong sampai aplikasi berjalan, satu perubahan kecil, dan PR pertama. Detail pendalaman ada di §2–§9; build image ada di §10.
+
+### 0.0 Quick start (TL;DR)
+
+```bash
+# 1) Node 22 (via nvm; boleh fnm)
+nvm install 22 && nvm use 22
+node -v                                  # v22.x
+
+# 2) Clone base repo + extension repo (extension DI DALAM folder base)
+mkdir -p ~/works/arsi && cd ~/works/arsi
+git clone <repo-arsi-web-base> arsi-web-base
+cd arsi-web-base
+git clone <repo-arsi-extension-client-a> web-extension-client-a
+echo "web-extension-*/" >> .git/info/exclude   # clone extension jangan ikut ter-commit ke base
+
+# 3) Install dependency (urutan: modules → container → extension)
+(cd web-modules && npm ci)
+(cd web-container && npm ci && npm run link:client-a)
+(cd web-extension-client-a && npm ci)
+
+# 4) Jalankan dev server
+cd web-container && npm run dev:client-a   # http://localhost:5173
+```
+
+> Workspace sample ini sudah berisi semua folder (layout flat) — jika Anda bekerja di sample, lewati langkah clone dan mulai dari langkah 3.
+
+### 0.1 Peta 5 menit: repo & tanggung jawab
+
+| Repo | Isi | Anda mengubah apa |
+| --- | --- | --- |
+| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-base` | shell/DI/routing, UI kit, module bisnis, extension default |
+| `arsi-extension-<client>` (1 repo per client) | override khas client (`src/`) | slot, route override, service wrapper, i18n/modal/event khas client |
+
+Arah dependensi: `Container ← Module ← Extension`, Shared dipakai Module & Extension. Extension **tidak boleh** menyentuh internal module — hanya `public.ts` (CONTRACT §1).
+
+### 0.2 Setup laptop
+
+| Kebutuhan | Cara |
+| --- | --- |
+| Node 22.x | `nvm install 22 && nvm use 22` (atau `fnm use 22`); verifikasi `node -v` |
+| npm 10+ | ikut Node; `npm -v` |
+| Git | `git --version`; set `user.name`/`user.email` |
+| Docker (opsional) | Docker Desktop / Docker Engine + Compose — hanya untuk §10 (build image lokal) |
+| jq (opsional) | untuk smoke test §10; `brew install jq` (macOS) / `apt-get install jq` (Linux) |
+| Editor | VS Code + ESLint; format mengikuti `.eslintrc.cjs` repo |
+
+Catatan OS:
+
+- **macOS/Linux**: semua perintah guide ini jalan native.
+- **Windows**: gunakan **WSL2** (Ubuntu) — script repo memakai `ln -sfn`, `sh`, dan path POSIX. Jangan clone di filesystem Windows (`/mnt/c/...`) karena symlink/performa; clone di home WSL.
+
+### 0.3 Clone & layout repo produksi
+
+```bash
+mkdir -p ~/works/arsi && cd ~/works/arsi
+git clone <repo-arsi-web-base> arsi-web-base
+cd arsi-web-base
+git clone <repo-arsi-extension-client-a> web-extension-client-a
+```
+
+Kenapa extension harus **di dalam** folder base repo? Dua kontrak path bergantung padanya:
+
+- container: `web-container/current-client -> ../web-extension-client-a` (symlink relatif ke parent `web-container`);
+- extension: `aliases.cjs`/`tsconfig.json` meresolve `../web-container` dan `../web-modules` relatif ke folder extension.
+
+Agar clone extension tidak muncul sebagai untracked di repo base, tambahkan ke exclude lokal:
+
+```bash
+echo "web-extension-*/" >> .git/info/exclude
+```
+
+> Workspace sample (`modular-web-sample`) memakai layout flat: `web-container`, `web-modules`, `web-extension-client-a`, `web-extension-template` bersaudara. Di sample, semua sudah terpasang; langkah clone di atas untuk repo produksi.
+
+### 0.4 Install dependency
+
+Urutan penting: `web-modules` dulu (workspace package), lalu `web-container`, lalu extension.
+
+```bash
+cd arsi-web-base
+(cd web-modules && npm ci)
+(cd web-container && npm ci && npm run link:client-a)   # link current-client ke extension aktif
+(cd web-extension-client-a && npm ci)
+```
+
+- Pakai `npm ci` (lockfile di-commit). `npm install` hanya bila Anda memang mengubah dependency — lalu commit lockfile.
+- Ulangi `npm ci` setelah `git pull` yang mengubah lockfile.
+- Ganti client aktif: `cd web-container && CLIENT=<client> npm run link:client` (restart dev server).
+
+### 0.5 Jalankan dev server
+
+```bash
+cd arsi-web-base/web-container
+npm run dev:client-a          # http://localhost:5173
+```
+
+- Config dev dibaca dari `web-container/public/config.json` (client-a, 3 module, `apiBase` dummyjson). Ubah file itu untuk mencoba kombinasi module lain.
+- Hot reload untuk perubahan `web-modules/` dan extension aktif.
+- **Restart** dev server setelah: menambah module (loader map di-generate) atau mengganti client (symlink berubah).
+- Cek cepat: halaman login tampil, menu sesuai `modules` di config, tidak ada error di console.
+
+### 0.6 Alur kerja harian
+
+1. Buat branch dari branch utama repo yang tepat: `feat/<ringkas>` atau `fix/<ringkas>`.
+2. Kerjakan perubahan; jalankan test/typecheck/lint repo terkait (§6).
+3. Commit kecil dengan conventional commit (`feat(<scope>): ...`, `fix(<scope>): ...`).
+4. PR ke repo yang tepat: perubahan module/shared/container → repo base; override client → repo extension. Checklist: §8.
+5. Perubahan yang mengadopsi base baru: bump `baseVersion` (§4.11).
+
+### 0.7 Peta belajar berikutnya
+
+| Ingin | Baca |
+| --- | --- |
+| Paham layer & aturan main | §2 (model mental), `CONTRACT.md` |
+| Membuat module baru | §3 |
+| Mengubah module yang ada | §3.17–§3.18 |
+| Membuat/mengubah extension client | §4 |
+| Menulis test | §6 |
+| Build image & smoke test lokal | §10 |
+| Deploy ke server | `DEPLOYMENT-GUIDE.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
 
 ---
 
@@ -26,33 +153,43 @@
 
 ### 1.1 Struktur
 
+Struktur produksi (1 repo base + 1 repo per client):
+
 ```
-arsi-web-workspace/
-├── Dockerfile                  # image base (multi-target: builder | runtime)
-├── ci/build-base.sh            # build + push image base
-├── docs/                       # ARCHITECTURE.md, CONTRACT.md, panduan ini
-├── web-container/              # shell: DI, routing, layout, config, registry
-│   └── current-client -> ../web-extension-client-a   (symlink)
-├── web-modules/                # shared/ (UI kit) + modules/<name>/ (fitur bisnis)
-├── web-extension-base/         # extension default (client "base") untuk image base
-├── web-extension-client-a/     # override untuk client-a
-└── web-extension-template/     # template untuk client baru
+arsi-web-base/                      # repo base
+├── Dockerfile                      # image base (multi-target: builder | runtime)
+├── ci/build-base.sh                # build + push image base
+├── docs/                           # ARCHITECTURE.md, CONTRACT.md, panduan ini
+├── web-container/                  # shell: DI, routing, layout, config, registry
+│   └── current-client -> ../web-extension-<client>   (symlink)
+├── web-modules/                    # shared/ (UI kit) + modules/<name>/ (fitur bisnis)
+├── web-extension-base/             # extension default (client "base") untuk image base
+└── web-extension-<client>/         # repo extension (clone terpisah, di dalam base repo)
 ```
 
-Repo **wajib bersebelahan** selama memakai path mapping.
+Folder extension **wajib bersebelahan** dengan `web-container` dan `web-modules` — symlink `current-client` dan alias extension (`../web-container`) bergantung padanya. Di laptop, clone repo extension **di dalam** folder base repo (langkah lengkap: §0.3).
+
+> Workspace sample ini (`modular-web-sample`) memakai layout flat — `web-container`, `web-modules`, `web-extension-client-a`, `web-extension-template` bersaudara dalam satu repo. Layout itu untuk kontribusi ke sample; struktur produksi mengikuti diagram di atas.
 
 ### 1.2 Prasyarat
 
-- Node.js 22.x (Docker/CI memakai `node:22-alpine`; jsdom@30/undici@8 butuh ≥22.22; `engines: ">=20"` di package.json).
+- Node.js 22.x (Docker/CI memakai `node:22-alpine`; jsdom@30/undici@8 butuh ≥22.22; `engines: ">=20"` di package.json). Disarankan via `nvm`/`fnm` (§0.2).
 - npm 10+.
+- Git.
+- Docker + Docker Compose (opsional — hanya untuk build image lokal & smoke test, §10).
+- OS: macOS/Linux native; Windows wajib WSL2 (script `ln -sfn` butuh shell POSIX).
 
 ### 1.3 Setup pertama kali
 
+Clone & layout: §0.3. Untuk workspace sample ini (semua folder sudah bersaudara):
+
 ```bash
-cd web-modules && npm install
-cd ../web-container && npm run link:client-a && npm install
-cd ../web-extension-client-a && npm install
+cd web-modules && npm ci
+cd ../web-container && npm ci && npm run link:client-a
+cd ../web-extension-client-a && npm ci
 ```
+
+Jalankan dev server: `cd web-container && npm run dev:client-a` → http://localhost:5173 (§0.5).
 
 ### 1.4 Perintah harian
 
@@ -65,6 +202,10 @@ cd ../web-extension-client-a && npm install
 | Test | `npm test` di repo mana pun (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` (container & extension) |
+| Guard COPY module | `cd web-container && npm run check:dockerfile` |
+| Build image base lokal | `ORG=<dockerhub-org> VERIFY=0 PUSH=0 ./ci/build-base.sh` (dari root repo base; §10.2) |
+| Build image client lokal | `cd web-extension-<client> && ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh` (§10.3) |
+| Adopsi base versi baru | bump `manifest.json:baseVersion` via PR (§4.11) |
 
 ### 1.5 Peta dokumen
 
@@ -74,6 +215,7 @@ cd ../web-extension-client-a && npm install
 | `CONTRACT.md` | Aturan keras per layer, naming, governance |
 | `DEVELOPER-GUIDE.md` (ini) | Langkah praktis membuat module/extension |
 | `docs/DEPLOYMENT-GUIDE.md` | Deployment DevOps: Docker build/run, env, CI, rollback |
+| `docs/VM-DEPLOYMENT-GUIDE.en.md` | Deploy runtime produksi di VM Linux: Docker, TLS, update/rollback, operasional (English) |
 | `docs/phase.02-rbac-navigation.md` | Rencana Fase 2: Keycloak RBAC + navigasi dari database |
 
 ---
@@ -649,6 +791,37 @@ const wrapped = {
 
 Contoh hidup: `module-sample` halaman `/module-sample/api` (`deps.api`) dan `/module-sample/api-registry` (registry + factory); wrapper extension di `web-extension-client-a/src/hooks/useClientASample.ts`.
 
+### 3.17 Mengubah Module yang Ada (bukan module baru)
+
+Alur aman saat menambah/mengubah fitur di module existing (mis. `user-management`):
+
+1. **Cek kontrak dulu** — `public.ts` module adalah API untuk extension. Tambahan yang tidak breaking:
+   - slot baru → deklarasikan di `slots.ts`, ekspor di `public.ts`, pakai `useSlot` di komponen;
+   - method service baru → factory di `services/`, query key baru di `queryKeys.ts`, hook baru, ekspor yang perlu di `public.ts`;
+   - route baru → `deps.routes.add({ path, element, meta: { group, module } })` di `init`;
+   - key i18n baru → `i18n/{en,id}.json` (namespace `<module>`).
+2. **Perubahan breaking** (rename/hapus export `public.ts`, ubah signature factory, hapus slot/route) **wajib diskusi lead dev** (CONTRACT §19.2), lalu:
+   - perbarui semua pemakai (extension yang import dari `@arsi/module-<name>`);
+   - catat di PR + changelog module; tambahkan test kontrak.
+3. **Dependency baru** mengikuti CONTRACT §1.6 — install di workspace: `cd web-modules && npm install <pkg> -w @arsi/module-<name>`; commit lockfile; tambahkan `resolve.dedupe` bila library di-import lintas tree.
+4. **Module baru** (bukan mengubah yang ada) tetap butuh COPY `package.json` di `Dockerfile` root repo base + `npm run check:dockerfile` (langkah §3.0 poin 12).
+5. **Jangan** import module lain, akses store module lain, atau menaruh state lintas module — komunikasi lewat event bus (CONTRACT §3.2, §13).
+
+### 3.18 Uji cepat perubahan module
+
+```bash
+# module + dependennya
+cd web-modules && npm run typecheck && npm test -- modules/<name> && npm run lint
+
+# pastikan container + bundle tetap sehat
+cd ../web-container && npm run typecheck && npm test && CLIENT=client-a npm run build:client
+
+# pastikan extension yang memakai public API module tetap kompilasi
+cd ../web-extension-client-a && npm run typecheck && npm test
+```
+
+Untuk perubahan `public.ts` (breaking atau tidak), **selalu** jalankan typecheck + test extension — itu konsumen utama kontrak module.
+
 ---
 
 ## 4. Membuat Extension (module-extension)
@@ -838,6 +1011,33 @@ CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extens
 ```
 
 `ci/build-client.sh` menjalankan verifikasi extension (typecheck/test/lint) di dalam base builder image; `check:base` memastikan `baseVersion` cocok dengan base yang dipakai. Detail build/run/rollback: `DEPLOYMENT-GUIDE.md` §3–§5.
+
+### 4.10 Menjalankan & menguji extension di lokal
+
+```bash
+# 1) arahkan container ke extension Anda
+cd web-container
+CLIENT=client-a npm run link:client      # symlink current-client -> ../web-extension-client-a
+readlink current-client                  # pastikan benar
+
+# 2) jalankan dev server
+npm run dev:client-a                     # http://localhost:5173
+```
+
+- Perubahan hanya di `src/` extension langsung hot-reload; **restart** dev server setelah menambah module atau mengganti client (loader map & symlink statis).
+- Uji extension: `cd web-extension-client-a && npm run typecheck && npm test && npm run lint`.
+- Override module yang belum pernah di-import extension butuh alias `@arsi/module-<name>` di `aliases.cjs` + `tsconfig.json` extension (lihat §4.2).
+- Debug cepat: `readlink web-container/current-client`; jalankan `npm run link:client-a` bila menunjuk extension yang salah.
+
+### 4.11 Adopsi base versi baru (bump `baseVersion`)
+
+Base dirilis sebagai tag (`<ver>`, mis. `0.2.0`). Client **tidak** otomatis ikut — adopsi eksplisit lewat PR:
+
+1. Di repo extension, ubah `manifest.json:baseVersion` ke tag base baru (exact, tanpa `^`).
+2. Jalankan verifikasi lokal: `npm run typecheck && npm run test --if-present && npm run lint`, lalu build image lokal (§10.3) — `check:base` akan gagal bila versi tidak cocok.
+3. Buka PR; CI membangun ulang image client terhadap base baru. Repo base **tidak** di-checkout; client lain tidak terpengaruh sampai mereka bump sendiri.
+4. Jika base membawa perubahan breaking pada public API module, koordinasikan dengan lead dev sebelum merge (CONTRACT §19.2).
+5. Jangan retag base lama ke nomor baru — selalu pakai tag asli hasil rilis.
 
 ---
 
@@ -1037,6 +1237,8 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - [ ] Tidak listen event extension lain; tidak membuat module listen event extension.
 - [ ] `manifest.json` diperbarui (client, baseVersion, modules, overrides).
 - [ ] Test override ditambahkan; `typecheck`, `test`, `lint` lulus; image client terbangun via `ci/build-client.sh` (`check:base` lulus).
+- [ ] `baseVersion` di-bump bila mengadopsi base versi baru (§4.11); client lain tidak ikut berubah tanpa PR mereka.
+- [ ] Smoke test image lokal (`PUSH=0 PULL=0 BUILD_ID=local`) — `/config.json` sesuai env (§10.4).
 
 ---
 
@@ -1050,6 +1252,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - `CONTRACT.md` §10.4 — Brand token ARSI Purple & aturan styling.
 - `CONTRACT.md` §9.4 — Aturan import UI kit (termasuk container self-contained).
 - `docs/DEPLOYMENT-GUIDE.md` — build image base/client, env runtime container, CI, rollback.
+- `docs/VM-DEPLOYMENT-GUIDE.en.md` — deploy runtime produksi di VM Linux (Docker, TLS, update/rollback, operasional).
 - `docs/phase.02-rbac-navigation.md` — rencana Fase 2: Keycloak RBAC + navigasi berbasis database.
 
 ### 9.2 Peta contoh di kode
@@ -1101,5 +1304,63 @@ Langkah paling cepat: salin module/extension pilot yang paling mirip, lalu ganti
 
 ---
 
-**Document version**: 0.7.4
-**Last updated**: 2026-10-02
+## 10. Build Image Lokal & Smoke Test
+
+Verifikasi paling dekat ke produksi sebelum PR: bangun image base + image client di laptop, jalankan container, cek `/config.json`. Tanpa push ke registry.
+
+### 10.1 Prasyarat
+
+- Docker + Docker Compose berjalan (`docker version`).
+- Berada di root repo base (untuk base) / root repo extension (untuk client).
+- Base dan extension memakai `ORG` yang sama agar tag lokal saling ketemu.
+
+### 10.2 Build image base lokal
+
+```bash
+cd arsi-web-base
+ORG=<dockerhub-org> VERIFY=1 PUSH=0 ./ci/build-base.sh
+docker image ls | grep arsi-web-base
+```
+
+- `VERIFY=1` menjalankan typecheck/test/lint + `check:dockerfile` + build base default sebelum image dibangun (opsional; percepat dengan `VERIFY=0`).
+- Hasil: `docker.io/<org>/arsi-web-base:0.1.0` dan `:0.1.0-builder` (versi dari `web-container/package.json`).
+- Belum di-push — extension akan memakai image lokal ini (`PULL=0`).
+
+### 10.3 Build image client lokal
+
+```bash
+cd arsi-web-base/web-extension-client-a
+ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
+docker image ls | grep arsi-web-client-a
+```
+
+- `PULL=0` = jangan tarik base dari registry (pakai image lokal hasil §10.2).
+- Verifikasi (typecheck/test/lint), `check:base`, dan build Vite berjalan **di dalam** builder image.
+- Hasil: `docker.io/<org>/arsi-web-client-a:local`.
+
+### 10.4 Jalankan & smoke test
+
+```bash
+docker run -d --name arsi-local -p 8080:80 \
+  -e VITE_MODULES=user-management,product-management,module-sample \
+  -e VITE_API_BASE=https://dummyjson.com \
+  docker.io/<org>/arsi-web-client-a:local
+
+sleep 2
+curl -s http://localhost:8080/config.json | jq .          # client + modules + apiBase
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/     # 200
+curl -s http://localhost:8080/halaman/tidak-ada | grep -q '<div id="root">' && echo "SPA fallback OK"
+docker logs arsi-local 2>&1 | grep Generated
+docker rm -f arsi-local
+```
+
+### 10.5 Catatan
+
+- **Negative test `check:base`** (opsional): ubah sementara `manifest.json:baseVersion` ke `9.9.9` → build gagal dengan pesan mismatch; kembalikan nilainya.
+- **Apple Silicon**: image lokal dibangun untuk `linux/arm64`; CI/VM produksi umumnya `linux/amd64`. Untuk meniru produksi gunakan `docker build --platform linux/amd64` (script belum menyetel platform) atau andalkan CI.
+- Selanjutnya: `DEPLOYMENT-GUIDE.md` (tag/CI/rollback) dan `VM-DEPLOYMENT-GUIDE.en.md` (deploy ke VM Linux).
+
+---
+
+**Document version**: 0.8.0
+**Last updated**: 2026-10-03

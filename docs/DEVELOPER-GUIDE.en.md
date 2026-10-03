@@ -1,8 +1,8 @@
 # Developer Guide — Building Modules & Extensions
 
-**Version**: 0.7.4
-**Audience**: Developers of `web-modules`, `web-extension-<client>`
-**Related documents**: `ARCHITECTURE.md` (why & how), `CONTRACT.md` (hard rules — violations = PR rejected)
+**Version**: 0.8.0
+**Audience**: Developers of `web-modules`, `web-extension-<client>`, and new joiners
+**Related documents**: `ARCHITECTURE.md` (why & how), `CONTRACT.md` (hard rules — violations = PR rejected), `DEPLOYMENT-GUIDE.en.md` (build/CI), `VM-DEPLOYMENT-GUIDE.en.md` (production deployment on a Linux VM)
 
 > This guide is the fast path to safely add a **new business module** or a **client extension**. All examples are taken from real code in this workspace (`user-management`, `product-management`, `web-extension-client-a`).
 
@@ -10,6 +10,7 @@
 
 ## Table of Contents
 
+0. Onboarding: From Zero to Running
 1. Setup & Workspace Map
 2. 5-Minute Mental Model
 3. Creating a New Module
@@ -19,6 +20,132 @@
 7. Troubleshooting
 8. PR Checklist
 9. References & Living Examples
+10. Local Image Build & Smoke Test
+
+---
+
+## 0. Onboarding: From Zero to Running
+
+This section walks a new developer from an empty laptop to a running app, one small change, and a first PR. Deep dives live in §2–§9; image builds in §10.
+
+### 0.0 Quick start (TL;DR)
+
+```bash
+# 1) Node 22 (via nvm; fnm works too)
+nvm install 22 && nvm use 22
+node -v                                  # v22.x
+
+# 2) Clone the base repo + extension repo (extension INSIDE the base folder)
+mkdir -p ~/works/arsi && cd ~/works/arsi
+git clone <repo-arsi-web-base> arsi-web-base
+cd arsi-web-base
+git clone <repo-arsi-extension-client-a> web-extension-client-a
+echo "web-extension-*/" >> .git/info/exclude   # keep the extension clone out of the base repo
+
+# 3) Install dependencies (order: modules → container → extension)
+(cd web-modules && npm ci)
+(cd web-container && npm ci && npm run link:client-a)
+(cd web-extension-client-a && npm ci)
+
+# 4) Start the dev server
+cd web-container && npm run dev:client-a   # http://localhost:5173
+```
+
+> This sample workspace already contains every folder (flat layout) — if you work in the sample, skip the clone step and start at step 3.
+
+### 0.1 5-minute map: repos & responsibilities
+
+| Repo | Contents | What you change here |
+| --- | --- | --- |
+| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-base` | shell/DI/routing, UI kit, business modules, default extension |
+| `arsi-extension-<client>` (1 repo per client) | client-specific overrides (`src/`) | slots, route overrides, service wrappers, client i18n/modal/events |
+
+Dependency direction: `Container ← Module ← Extension`; Shared is used by Module & Extension. An extension **must not** touch module internals — only `public.ts` (CONTRACT §1).
+
+### 0.2 Laptop setup
+
+| Need | How |
+| --- | --- |
+| Node 22.x | `nvm install 22 && nvm use 22` (or `fnm use 22`); verify `node -v` |
+| npm 10+ | ships with Node; `npm -v` |
+| Git | `git --version`; set `user.name`/`user.email` |
+| Docker (optional) | Docker Desktop / Docker Engine + Compose — only for §10 (local image build) |
+| jq (optional) | for the §10 smoke test; `brew install jq` (macOS) / `apt-get install jq` (Linux) |
+| Editor | VS Code + ESLint; formatting follows the repo `.eslintrc.cjs` |
+
+OS notes:
+
+- **macOS/Linux**: every command in this guide runs natively.
+- **Windows**: use **WSL2** (Ubuntu) — the repo scripts use `ln -sfn`, `sh`, and POSIX paths. Do not clone on the Windows filesystem (`/mnt/c/...`) because of symlinks/performance; clone inside the WSL home.
+
+### 0.3 Clone & production repo layout
+
+```bash
+mkdir -p ~/works/arsi && cd ~/works/arsi
+git clone <repo-arsi-web-base> arsi-web-base
+cd arsi-web-base
+git clone <repo-arsi-extension-client-a> web-extension-client-a
+```
+
+Why must the extension live **inside** the base repo folder? Two path contracts depend on it:
+
+- container: `web-container/current-client -> ../web-extension-client-a` (relative to the `web-container` parent);
+- extension: `aliases.cjs`/`tsconfig.json` resolve `../web-container` and `../web-modules` relative to the extension folder.
+
+To keep the extension clone out of the base repo's untracked files, add a local exclude:
+
+```bash
+echo "web-extension-*/" >> .git/info/exclude
+```
+
+> The sample workspace (`modular-web-sample`) uses a flat layout: `web-container`, `web-modules`, `web-extension-client-a`, `web-extension-template` as siblings. In the sample everything is already set up; the clone steps above are for the production repos.
+
+### 0.4 Install dependencies
+
+Order matters: `web-modules` first (workspace package), then `web-container`, then the extension.
+
+```bash
+cd arsi-web-base
+(cd web-modules && npm ci)
+(cd web-container && npm ci && npm run link:client-a)   # link current-client to the active extension
+(cd web-extension-client-a && npm ci)
+```
+
+- Use `npm ci` (lockfiles are committed). Use `npm install` only when you actually change dependencies — then commit the lockfile.
+- Re-run `npm ci` after a `git pull` that changed a lockfile.
+- Switch the active client: `cd web-container && CLIENT=<client> npm run link:client` (restart the dev server).
+
+### 0.5 Run the dev server
+
+```bash
+cd arsi-web-base/web-container
+npm run dev:client-a          # http://localhost:5173
+```
+
+- Dev config is read from `web-container/public/config.json` (client-a, 3 modules, dummyjson `apiBase`). Edit that file to try other module combinations.
+- Hot reload covers changes in `web-modules/` and the active extension.
+- **Restart** the dev server after: adding a module (loader map is generated) or switching clients (the symlink changes).
+- Quick check: login page renders, the menu matches `modules` in the config, no console errors.
+
+### 0.6 Daily workflow
+
+1. Branch off the main branch of the right repo: `feat/<short>` or `fix/<short>`.
+2. Make the change; run tests/typecheck/lint for the affected repo (§6).
+3. Commit small conventional commits (`feat(<scope>): ...`, `fix(<scope>): ...`).
+4. Open a PR in the right repo: module/shared/container changes → base repo; client overrides → extension repo. Checklist: §8.
+5. Adopting a new base: bump `baseVersion` (§4.11).
+
+### 0.7 Learning map
+
+| Want to | Read |
+| --- | --- |
+| Understand layers & ground rules | §2 (mental model), `CONTRACT.md` |
+| Create a new module | §3 |
+| Modify an existing module | §3.17–§3.18 |
+| Create/modify a client extension | §4 |
+| Write tests | §6 |
+| Build images & smoke test locally | §10 |
+| Deploy to a server | `DEPLOYMENT-GUIDE.en.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
 
 ---
 
@@ -26,33 +153,43 @@
 
 ### 1.1 Structure
 
+Production structure (1 base repo + 1 repo per client):
+
 ```
-arsi-web-workspace/
-├── Dockerfile                  # base image (multi-target: builder | runtime)
-├── ci/build-base.sh            # build + push the base image
-├── docs/                       # ARCHITECTURE.md, CONTRACT.md, this guide
-├── web-container/              # shell: DI, routing, layout, config, registries
-│   └── current-client -> ../web-extension-client-a   (symlink)
-├── web-modules/                # shared/ (UI kit) + modules/<name>/ (business features)
-├── web-extension-base/         # default extension (client "base") for the base image
-├── web-extension-client-a/     # overrides for client-a
-└── web-extension-template/     # template for new clients
+arsi-web-base/                      # base repo
+├── Dockerfile                      # base image (multi-target: builder | runtime)
+├── ci/build-base.sh                # build + push the base image
+├── docs/                           # ARCHITECTURE.md, CONTRACT.md, this guide
+├── web-container/                  # shell: DI, routing, layout, config, registries
+│   └── current-client -> ../web-extension-<client>   (symlink)
+├── web-modules/                    # shared/ (UI kit) + modules/<name>/ (business features)
+├── web-extension-base/             # default extension (client "base") for the base image
+└── web-extension-<client>/         # extension repo (separate clone, inside the base repo)
 ```
 
-The repos **must sit side by side** as long as path mapping is used.
+The extension folder **must sit side by side** with `web-container` and `web-modules` — the `current-client` symlink and the extension aliases (`../web-container`) depend on it. On a laptop, clone the extension repo **inside** the base repo folder (full steps: §0.3).
+
+> This sample workspace (`modular-web-sample`) uses a flat layout — `web-container`, `web-modules`, `web-extension-client-a`, `web-extension-template` as siblings in one repo. That layout is for contributing to the sample; production follows the diagram above.
 
 ### 1.2 Prerequisites
 
-- Node.js 22.x (Docker/CI uses `node:22-alpine`; jsdom@30/undici@8 need ≥22.22; `engines: ">=20"` in package.json).
+- Node.js 22.x (Docker/CI uses `node:22-alpine`; jsdom@30/undici@8 need ≥22.22; `engines: ">=20"` in package.json). Recommended via `nvm`/`fnm` (§0.2).
 - npm 10+.
+- Git.
+- Docker + Docker Compose (optional — only for local image build & smoke test, §10).
+- OS: macOS/Linux native; Windows requires WSL2 (the `ln -sfn` scripts need a POSIX shell).
 
 ### 1.3 First-time setup
 
+Clone & layout: §0.3. For this sample workspace (all folders are already siblings):
+
 ```bash
-cd web-modules && npm install
-cd ../web-container && npm run link:client-a && npm install
-cd ../web-extension-client-a && npm install
+cd web-modules && npm ci
+cd ../web-container && npm ci && npm run link:client-a
+cd ../web-extension-client-a && npm ci
 ```
+
+Run the dev server: `cd web-container && npm run dev:client-a` → http://localhost:5173 (§0.5).
 
 ### 1.4 Daily commands
 
@@ -65,6 +202,10 @@ cd ../web-extension-client-a && npm install
 | Tests | `npm test` in any repo (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` (container & extension) |
+| Module COPY guard | `cd web-container && npm run check:dockerfile` |
+| Local base image build | `ORG=<dockerhub-org> VERIFY=0 PUSH=0 ./ci/build-base.sh` (from the base repo root; §10.2) |
+| Local client image build | `cd web-extension-<client> && ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh` (§10.3) |
+| Adopt a new base version | bump `manifest.json:baseVersion` via PR (§4.11) |
 
 ### 1.5 Document map
 
@@ -74,6 +215,7 @@ cd ../web-extension-client-a && npm install
 | `CONTRACT.md` | Hard rules per layer, naming, governance |
 | `DEVELOPER-GUIDE.md` (this) | Practical steps to build a module/extension |
 | `docs/DEPLOYMENT-GUIDE.en.md` | DevOps deployment: Docker build/run, env, CI, rollback |
+| `docs/VM-DEPLOYMENT-GUIDE.en.md` | Production runtime on a Linux VM: Docker, TLS, updates/rollback, operations |
 | `docs/phase.02-rbac-navigation.md` | Phase 2 plan: Keycloak RBAC + database-driven navigation |
 
 ---
@@ -649,6 +791,37 @@ const wrapped = {
 
 Living example: `module-sample` pages `/module-sample/api` (`deps.api`) and `/module-sample/api-registry` (registry + factory); extension wrapper in `web-extension-client-a/src/hooks/useClientASample.ts`.
 
+### 3.17 Modifying an Existing Module (not a new one)
+
+Safe flow when adding/changing features in an existing module (e.g. `user-management`):
+
+1. **Check the contract first** — the module's `public.ts` is the API for extensions. Non-breaking additions:
+   - new slot → declare it in `slots.ts`, export it in `public.ts`, consume it with `useSlot`;
+   - new service method → factory in `services/`, new query key in `queryKeys.ts`, new hook, export what is needed in `public.ts`;
+   - new route → `deps.routes.add({ path, element, meta: { group, module } })` in `init`;
+   - new i18n keys → `i18n/{en,id}.json` (namespace `<module>`).
+2. **Breaking changes** (renaming/removing a `public.ts` export, changing a factory signature, removing a slot/route) **require lead-dev discussion** (CONTRACT §19.2), then:
+   - update every consumer (extensions importing `@arsi/module-<name>`);
+   - record it in the PR + module changelog; add a contract test.
+3. **New dependencies** follow CONTRACT §1.6 — install in the workspace: `cd web-modules && npm install <pkg> -w @arsi/module-<name>`; commit the lockfile; add `resolve.dedupe` when the library is imported cross-tree.
+4. **A brand-new module** (not modifying an existing one) still needs its `package.json` COPY line in the base repo root `Dockerfile` + `npm run check:dockerfile` (§3.0 step 12).
+5. **Never** import another module, access another module's store, or keep cross-module state — communicate through the event bus (CONTRACT §3.2, §13).
+
+### 3.18 Quick test for module changes
+
+```bash
+# the module + its dependencies
+cd web-modules && npm run typecheck && npm test -- modules/<name> && npm run lint
+
+# make sure the container + bundle stay healthy
+cd ../web-container && npm run typecheck && npm test && CLIENT=client-a npm run build:client
+
+# make sure extensions consuming the module's public API still compile
+cd ../web-extension-client-a && npm run typecheck && npm test
+```
+
+For any `public.ts` change (breaking or not), **always** run the extension typecheck + tests — extensions are the main consumers of the module contract.
+
 ---
 
 ## 4. Creating an Extension (module-extension)
@@ -838,6 +1011,33 @@ CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extens
 ```
 
 `ci/build-client.sh` runs the extension verification (typecheck/test/lint) inside the base builder image; `check:base` ensures `baseVersion` matches the base in use. Full build/run/rollback details: `DEPLOYMENT-GUIDE.en.md` §3–§5.
+
+### 4.10 Running & testing an extension locally
+
+```bash
+# 1) point the container at your extension
+cd web-container
+CLIENT=client-a npm run link:client      # symlink current-client -> ../web-extension-client-a
+readlink current-client                  # confirm it is correct
+
+# 2) start the dev server
+npm run dev:client-a                     # http://localhost:5173
+```
+
+- Changes confined to the extension `src/` hot-reload; **restart** the dev server after adding a module or switching clients (loader map & symlink are static).
+- Test the extension: `cd web-extension-client-a && npm run typecheck && npm test && npm run lint`.
+- Overriding a module the extension has never imported needs the `@arsi/module-<name>` alias in the extension `aliases.cjs` + `tsconfig.json` (see §4.2).
+- Quick debug: `readlink web-container/current-client`; run `npm run link:client-a` when it points at the wrong extension.
+
+### 4.11 Adopting a new base version (bump `baseVersion`)
+
+The base is released as tags (`<ver>`, e.g. `0.2.0`). Clients do **not** move automatically — adoption is explicit via PR:
+
+1. In the extension repo, set `manifest.json:baseVersion` to the new base tag (exact, no `^`).
+2. Verify locally: `npm run typecheck && npm run test --if-present && npm run lint`, then build the local image (§10.3) — `check:base` fails if the version does not match.
+3. Open a PR; CI rebuilds the client image against the new base. The base repo is **not** checked out; other clients are unaffected until they bump it themselves.
+4. If the base carries breaking changes to a module's public API, coordinate with the lead dev before merging (CONTRACT §19.2).
+5. Never retag an old base to a new number — always use the original release tag.
 
 ---
 
@@ -1037,6 +1237,8 @@ Full example: `product-management/events/containerSearch.test.ts`.
 - [ ] Does not listen to other extensions' events; does not make modules listen to extension events.
 - [ ] `manifest.json` is updated (client, baseVersion, modules, overrides).
 - [ ] Override tests added; `typecheck`, `test`, `lint` pass; the client image builds via `ci/build-client.sh` (`check:base` passes).
+- [ ] `baseVersion` bumped when adopting a new base (§4.11); other clients stay unchanged until their own PR.
+- [ ] Local image smoke test (`PUSH=0 PULL=0 BUILD_ID=local`) — `/config.json` matches the env (§10.4).
 
 ---
 
@@ -1050,6 +1252,7 @@ Full example: `product-management/events/containerSearch.test.ts`.
 - `CONTRACT.md` §10.4 — ARSI Purple brand tokens & styling rules.
 - `CONTRACT.md` §9.4 — UI kit import rules (including container self-contained).
 - `docs/DEPLOYMENT-GUIDE.en.md` — base/client image builds, container runtime env, CI, rollback.
+- `docs/VM-DEPLOYMENT-GUIDE.en.md` — production runtime on a Linux VM (Docker, TLS, updates/rollback, operations).
 - `docs/phase.02-rbac-navigation.md` — Phase 2 plan: Keycloak RBAC + database-driven navigation.
 
 ### 9.2 Code example map
@@ -1101,5 +1304,63 @@ Fastest path: copy the pilot module/extension that is closest, then rename & fil
 
 ---
 
-**Document version**: 0.7.4
-**Last updated**: 2026-10-02
+## 10. Local Image Build & Smoke Test
+
+The closest thing to production before a PR: build the base + client images on your laptop, run the container, check `/config.json`. No registry push.
+
+### 10.1 Prerequisites
+
+- Docker + Docker Compose running (`docker version`).
+- Run from the base repo root (for the base) / the extension repo root (for the client).
+- Base and extension use the same `ORG` so the local tags find each other.
+
+### 10.2 Build the base image locally
+
+```bash
+cd arsi-web-base
+ORG=<dockerhub-org> VERIFY=1 PUSH=0 ./ci/build-base.sh
+docker image ls | grep arsi-web-base
+```
+
+- `VERIFY=1` runs typecheck/test/lint + `check:dockerfile` + the default base build before building the images (optional; use `VERIFY=0` for speed).
+- Result: `docker.io/<org>/arsi-web-base:0.1.0` and `:0.1.0-builder` (version from `web-container/package.json`).
+- Not pushed — the extension will use this local image (`PULL=0`).
+
+### 10.3 Build the client image locally
+
+```bash
+cd arsi-web-base/web-extension-client-a
+ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
+docker image ls | grep arsi-web-client-a
+```
+
+- `PULL=0` = do not pull the base from the registry (use the local image from §10.2).
+- Verification (typecheck/test/lint), `check:base`, and the Vite build run **inside** the builder image.
+- Result: `docker.io/<org>/arsi-web-client-a:local`.
+
+### 10.4 Run & smoke test
+
+```bash
+docker run -d --name arsi-local -p 8080:80 \
+  -e VITE_MODULES=user-management,product-management,module-sample \
+  -e VITE_API_BASE=https://dummyjson.com \
+  docker.io/<org>/arsi-web-client-a:local
+
+sleep 2
+curl -s http://localhost:8080/config.json | jq .          # client + modules + apiBase
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/     # 200
+curl -s http://localhost:8080/halaman/tidak-ada | grep -q '<div id="root">' && echo "SPA fallback OK"
+docker logs arsi-local 2>&1 | grep Generated
+docker rm -f arsi-local
+```
+
+### 10.5 Notes
+
+- **Negative `check:base` test** (optional): temporarily set `manifest.json:baseVersion` to `9.9.9` → the build fails with a mismatch message; restore the value.
+- **Apple Silicon**: local images are built for `linux/arm64`; CI/production VMs are usually `linux/amd64`. To mirror production use `docker build --platform linux/amd64` (the scripts do not set a platform) or rely on CI.
+- Next: `DEPLOYMENT-GUIDE.en.md` (tags/CI/rollback) and `VM-DEPLOYMENT-GUIDE.en.md` (deploy to a Linux VM).
+
+---
+
+**Document version**: 0.8.0
+**Last updated**: 2026-10-03
