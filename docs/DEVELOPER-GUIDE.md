@@ -806,6 +806,7 @@ Alur aman saat menambah/mengubah fitur di module existing (mis. `user-management
 3. **Dependency baru** mengikuti CONTRACT §1.6 — install di workspace: `cd web-modules && npm install <pkg> -w @arsi/module-<name>`; commit lockfile; tambahkan `resolve.dedupe` bila library di-import lintas tree.
 4. **Module baru** (bukan mengubah yang ada) tetap butuh COPY `package.json` di `Dockerfile` root repo base + `npm run check:dockerfile` (langkah §3.0 poin 12).
 5. **Jangan** import module lain, akses store module lain, atau menaruh state lintas module — komunikasi lewat event bus (CONTRACT §3.2, §13).
+6. **Menambah field config** — ubah `AppConfig` + `DEFAULT_CONFIG` + `normalizeConfig` di `web-container/src/config/`. Entrypoint **tidak perlu** diubah bila deploy memakai `VITE_CONFIG_JSON` (JSON penuh); bila memakai env individual, tambahkan env + test di `web-container/docker/entrypoint.sh` / `entrypoint.test.sh`.
 
 ### 3.18 Uji cepat perubahan module
 

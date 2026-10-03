@@ -117,7 +117,7 @@ Base repo:
 cd web-modules          && npm ci && npm run typecheck && npm test && npm run lint
 cd ../web-extension-base && npm ci && npm run typecheck && npm run lint
 cd ../web-container     && CLIENT=base npm run link:client && npm ci
-npm run typecheck && npm test && npm run check:dockerfile && CLIENT=base npm run build:client
+npm run typecheck && npm test && npm run test:entrypoint && npm run check:dockerfile && CLIENT=base npm run build:client
 ```
 
 Extension repo:
@@ -261,10 +261,17 @@ For a complete production runtime guide on a Linux VM (Docker install, TLS with 
 | `VITE_MODULES` | `user-management` | CSV of modules **initialized** at runtime (example: `user-management,product-management,module-sample`) |
 | `VITE_API_BASE` | `https://dummyjson.com` | API base URL for `deps.api` and module services |
 | `VITE_ENABLE_AUDIT_LIVE` | `true` | Feature flag (`featureFlags.enableAuditLive`) |
+| `VITE_CONFIG_JSON` | — | **Full override** of `/config.json` (JSON object). When set, the four variables above are ignored. |
 
 Important notes:
 
 - **Modules must exist in the build** — every module under `web-modules/modules/` is always bundled (lazy chunk); `VITE_MODULES` only selects which ones are active at runtime. The module name **must match** the folder name; otherwise the app fails to boot with `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
+- **Full override (CI-friendly)** — `VITE_CONFIG_JSON` writes `config.json` verbatim (multiline is compacted to one line) and ignores the individual envs. The value **must** be a JSON object (starts `{`, ends `}`); otherwise the container **fails to start** with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Use it when CI needs fields beyond the four variables above (e.g. extra feature flags):
+
+  ```json
+  {"client":"bca","modules":["user-management","product-management"],"apiBase":"https://api.bca.example","featureFlags":{"enableAuditLive":false,"newFlag":true}}
+  ```
+
 - Runtime config has a single source in the base: `entrypoint.sh` + `nginx.conf` ship in the base runtime; the client image only replaces `/usr/share/nginx/html` with the client dist.
 - Config is fetched with `cache: 'no-store'`; nginx also sends `Cache-Control: no-store` for `/config.json`.
 - Changing env = recreate the container (`docker compose up -d --force-recreate`), no image rebuild.
@@ -365,6 +372,8 @@ Manual checklist: login/module routes per `VITE_MODULES`, theme/locale, deep lin
 | `[bootstrap] module "x" … has no entry` | `VITE_MODULES` contains a name that is not a folder under `web-modules/modules/`. Fix the env or add the module to the build. |
 | Module does not appear even though env is correct | The module was not bundled (stale build) or is missing from the runtime `config.json`. Check `curl /config.json`, rebuild the image. |
 | Config changes are not visible | Browser cache (must be `no-store`) or the container was not recreated. `docker compose up -d --force-recreate`. |
+| Container fails to start: `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | `VITE_CONFIG_JSON` is not a JSON object (truncated, array, or misquoted). Fix the value, or unset it to use the individual envs. |
+| App boots with no modules after a full override | `VITE_CONFIG_JSON` is valid but `modules` is empty/missing. Add the bundled module names; verify with `curl /config.json`. |
 | `check:base` mismatch | Message `[check:base] baseVersion manifest (x) != base image (y)`. Align `manifest.json:baseVersion` with the base tag, or use the correct `BASE_BUILDER_IMAGE`/rebuild the base. |
 | Base tag `<ver>-builder` not found when pulling | That base version was not built/pushed, or `REGISTRY`/`ORG` is wrong. Run `ci/build-base.sh` in the base repo or align `BASE_VERSION`/`manifest.json:baseVersion`. |
 | Docker build fails: module `package.json` not found | A new module is missing its `COPY` line in the base repo root `Dockerfile`. Run `npm run check:dockerfile`, add the COPY line. |
@@ -420,6 +429,7 @@ TAG=<previous-tag> docker compose up -d --force-recreate
 | `ci/build-base.sh` | Build + push the 2 base images + immutable tags |
 | `web-extension-base/` | Default extension for the base runtime (client `base`) |
 | `web-container/docker/entrypoint.sh` | Generates `/config.json` from env |
+| `web-container/docker/entrypoint.test.sh` | Shell test for `/config.json` generation (individual env + `VITE_CONFIG_JSON`) |
 | `web-container/nginx.conf` | SPA fallback + cache headers |
 | `web-container/scripts/check-dockerfile-modules.mjs` | Guard for module `package.json` COPY in the root Dockerfile |
 | `web-container/scripts/check-base-version.mjs` | Guard for manifest `baseVersion` vs base image |

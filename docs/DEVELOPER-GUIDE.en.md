@@ -806,6 +806,7 @@ Safe flow when adding/changing features in an existing module (e.g. `user-manage
 3. **New dependencies** follow CONTRACT §1.6 — install in the workspace: `cd web-modules && npm install <pkg> -w @arsi/module-<name>`; commit the lockfile; add `resolve.dedupe` when the library is imported cross-tree.
 4. **A brand-new module** (not modifying an existing one) still needs its `package.json` COPY line in the base repo root `Dockerfile` + `npm run check:dockerfile` (§3.0 step 12).
 5. **Never** import another module, access another module's store, or keep cross-module state — communicate through the event bus (CONTRACT §3.2, §13).
+6. **Adding a config field** — update `AppConfig` + `DEFAULT_CONFIG` + `normalizeConfig` in `web-container/src/config/`. The entrypoint **does not** need changes when deployment uses `VITE_CONFIG_JSON` (full JSON); when using individual envs, add the env + test in `web-container/docker/entrypoint.sh` / `entrypoint.test.sh`.
 
 ### 3.18 Quick test for module changes
 

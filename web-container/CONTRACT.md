@@ -1020,7 +1020,7 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 | Environment | Sumber                                                  |
 | ----------- | ------------------------------------------------------- |
 | Dev lokal   | `web-container/public/config.json`                      |
-| Production  | `/config.json` di-generate entrypoint dari env variable |
+| Production  | `/config.json` di-generate entrypoint dari env variable (`VITE_*`; override penuh via `VITE_CONFIG_JSON`) |
 
 ### 14.2 Struktur Config
 
@@ -1042,6 +1042,7 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 - Modul dan extension **tidak boleh** fetch `/config.json` sendiri.
 - Modul dan extension akses config via `deps.config` atau `useConfig()`.
 - Env variable **tidak boleh** dipakai di modul/extension (`import.meta.env.VITE_*` dilarang).
+- `VITE_CONFIG_JSON` **boleh** dipakai di production untuk override penuh `config.json` (object JSON; env individual diabaikan bila diisi). Ini env **runtime container**, bukan `import.meta.env` — larangan env di modul/extension tetap berlaku.
 - Config **wajib** punya default fallback agar app bisa boot saat gagal fetch.
 
 ---
@@ -1220,11 +1221,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.7.0
-**Last updated**: 2026-10-02
+**Document version**: 0.7.1
+**Last updated**: 2026-10-03
 
 **Changelog:**
 
+- **0.7.1** — Override penuh `config.json` via env runtime `VITE_CONFIG_JSON` (entrypoint base, validasi fail-fast, env individual diabaikan bila diisi); aturan §14.1/§14.3 diperbarui.
 - **0.7.0** — Base image & extension deployment: Dockerfile pindah ke root repo base (`arsi-web-base`) dengan base image multi-target (builder + runtime, Node 22 builder); extension `FROM` base image tanpa `COPY` modul; `manifest.json.baseVersion` pin exact + guard `check:base` saat build extension; aturan Docker di §1.6/§15/§16 diperbarui.
 - **0.6.0** — Generated Loader Map (§1.7): map entry di-generate dari `package.json` name, alias wildcard (§1.5), sync test, pre-hooks; menambah modul tidak menyentuh `discover.ts`/alias/tsconfig.
 - **0.5.0** — Dependency Policy (§1.6): kepemilikan package, aturan peer/dedupe, larangan duplikasi kapabilitas container, aturan CSS/Tailwind, Docker `check:dockerfile`, dan verifikasi duplikat bundle.

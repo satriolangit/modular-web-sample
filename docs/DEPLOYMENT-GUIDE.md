@@ -117,7 +117,7 @@ Repo base:
 cd web-modules          && npm ci && npm run typecheck && npm test && npm run lint
 cd ../web-extension-base && npm ci && npm run typecheck && npm run lint
 cd ../web-container     && CLIENT=base npm run link:client && npm ci
-npm run typecheck && npm test && npm run check:dockerfile && CLIENT=base npm run build:client
+npm run typecheck && npm test && npm run test:entrypoint && npm run check:dockerfile && CLIENT=base npm run build:client
 ```
 
 Repo extension:
@@ -261,10 +261,17 @@ Panduan runtime produksi lengkap di VM Linux (install Docker, TLS Let's Encrypt,
 | `VITE_MODULES` | `user-management` | CSV modul yang **di-init** saat runtime (contoh: `user-management,product-management,module-sample`) |
 | `VITE_API_BASE` | `https://dummyjson.com` | Base URL API untuk `deps.api` dan service modul |
 | `VITE_ENABLE_AUDIT_LIVE` | `true` | Feature flag (`featureFlags.enableAuditLive`) |
+| `VITE_CONFIG_JSON` | — | **Override penuh** `/config.json` (JSON object). Jika diisi, empat env di atas diabaikan. |
 
 Catatan penting:
 
 - **Modul harus ada di build** — semua modul di `web-modules/modules/` selalu ter-bundle (lazy chunk); `VITE_MODULES` hanya menentukan mana yang aktif saat runtime. Nama modul **harus sama** dengan nama folder; kalau tidak, app gagal boot dengan `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
+- **Override penuh (CI-friendly)** — `VITE_CONFIG_JSON` menulis `config.json` apa adanya (multiline dipadatkan ke satu baris) dan mengabaikan env individual. Nilai **wajib** object JSON (diawali `{`, diakhiri `}`); kalau tidak, container **gagal start** dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Pakai bila CI perlu mengeset field di luar empat env di atas (mis. feature flag tambahan):
+
+  ```json
+  {"client":"bca","modules":["user-management","product-management"],"apiBase":"https://api.bca.example","featureFlags":{"enableAuditLive":false,"newFlag":true}}
+  ```
+
 - Config runtime satu sumber di base: `entrypoint.sh` + `nginx.conf` dibawa base runtime; image client hanya mengganti `/usr/share/nginx/html` dengan dist client.
 - Config dibaca dengan `cache: 'no-store'`; nginx juga mengirim `Cache-Control: no-store` untuk `/config.json`.
 - Ganti env = recreate container (`docker compose up -d --force-recreate`), tanpa rebuild image.
@@ -365,6 +372,8 @@ Checklist manual: login/route modul sesuai `VITE_MODULES`, theme/locale, deep-li
 | `[bootstrap] module "x" … has no entry` | `VITE_MODULES` memuat nama yang bukan folder di `web-modules/modules/`. Perbaiki env atau tambahkan modul ke build. |
 | Modul tidak muncul walau env benar | Modul belum ter-bundle (build lama) atau tidak ada di `config.json` runtime. Cek `curl /config.json`, rebuild image. |
 | Perubahan config tidak terlihat | Browser cache (harus `no-store`) atau container belum di-recreate. `docker compose up -d --force-recreate`. |
+| Container gagal start: `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | `VITE_CONFIG_JSON` bukan object JSON (terpotong, array, atau salah kutip). Perbaiki nilainya, atau kosongkan untuk memakai env individual. |
+| App boot tanpa module setelah override | `VITE_CONFIG_JSON` valid tapi `modules` kosong/tidak ada. Isi dengan nama module yang ter-bundle; cek `curl /config.json`. |
 | `check:base` mismatch | Pesan `[check:base] baseVersion manifest (x) != base image (y)`. Samakan `manifest.json:baseVersion` dengan tag base, atau pakai `BASE_BUILDER_IMAGE` yang benar/rebuild base. |
 | Tag base `<ver>-builder` tidak ditemukan saat pull | Base versi itu belum dibuild/push, atau `REGISTRY`/`ORG` salah. Jalankan `ci/build-base.sh` di repo base atau samakan `BASE_VERSION`/`manifest.json:baseVersion`. |
 | Build Docker gagal: `package.json` modul tidak ditemukan | Modul baru belum ditambah `COPY` di `Dockerfile` root repo base. Jalankan `npm run check:dockerfile`, tambah baris COPY. |
@@ -420,6 +429,7 @@ TAG=<tag-sebelumnya> docker compose up -d --force-recreate
 | `ci/build-base.sh` | Build + push 2 image base + tag immutable |
 | `web-extension-base/` | Extension default untuk base runtime (client `base`) |
 | `web-container/docker/entrypoint.sh` | Generate `/config.json` dari env |
+| `web-container/docker/entrypoint.test.sh` | Shell test untuk generasi `/config.json` (env individual + `VITE_CONFIG_JSON`) |
 | `web-container/nginx.conf` | SPA fallback + cache header |
 | `web-container/scripts/check-dockerfile-modules.mjs` | Guard COPY `package.json` modul di Dockerfile root |
 | `web-container/scripts/check-base-version.mjs` | Guard `baseVersion` manifest vs base image |

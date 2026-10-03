@@ -211,6 +211,7 @@ All configuration is injected as environment variables and turned into `/config.
 | `VITE_MODULES` | `user-management` | **Yes** | Comma-separated modules **activated** at runtime, e.g. `user-management,product-management,module-sample`. Names must match folders under `web-modules/modules/` **in the image**. |
 | `VITE_API_BASE` | `https://dummyjson.com` | **Yes** | Base URL for `deps.api` and module services. Point it at the environment's backend. |
 | `VITE_ENABLE_AUDIT_LIVE` | `true` | No | Feature flag (`featureFlags.enableAuditLive`). |
+| `VITE_CONFIG_JSON` | — | No | **Full `/config.json` override** as a JSON object. When set, all individual `VITE_*` values above are ignored. |
 
 Rules and gotchas:
 
@@ -219,6 +220,7 @@ Rules and gotchas:
 - **API base and CORS.** If the API is on a different origin than the app, the backend must allow that origin (or serve the API under the same domain/path). Check the browser console for CORS errors after deploy.
 - **Changing config** requires recreating the container, not rebuilding the image: `docker compose up -d --force-recreate`.
 - The example compose sets `VITE_ENABLE_AUDIT_LIVE` to `false` when unset (production-safe); the image/entrypoint fallback is `true`. Set it explicitly per environment.
+- **Full override (`VITE_CONFIG_JSON`)** — for CI-driven config beyond the four variables (extra feature flags, future fields). The value must be a JSON object (starts `{`, ends `}`); otherwise the container **fails to start** with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Multiline values are compacted to one line. When set, the individual `VITE_*` values are ignored.
 
 Example `.env`:
 
@@ -228,6 +230,12 @@ VITE_CLIENT=client-a
 VITE_MODULES=user-management,product-management,module-sample
 VITE_API_BASE=https://api.example.com
 VITE_ENABLE_AUDIT_LIVE=false
+```
+
+For CI-driven full config, replace the individual variables with a single JSON value (see the multiline compose form in Appendix A.2):
+
+```dotenv
+VITE_CONFIG_JSON={"client":"client-a","modules":["user-management","product-management"],"apiBase":"https://api.example.com","featureFlags":{"enableAuditLive":false}}
 ```
 
 Example `compose.yaml`:
@@ -612,6 +620,8 @@ Manual checklist:
 | `bind: address already in use` on `docker compose up` | Host port conflict. `ss -ltnp \| grep 8080`, choose another port, update the proxy upstream. |
 | App boots but shows `[bootstrap] module "x" … has no entry` | `VITE_MODULES` includes a name that is not bundled in the image. Fix `.env` or rebuild the image with that module in the base. |
 | Config changes not visible | Container not recreated, or browser cache. `docker compose up -d --force-recreate`, hard-refresh; `/config.json` is `no-store`. |
+| Container exits with `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | The `VITE_CONFIG_JSON` value is not a JSON object (truncated, array, misquoted). Fix it, or unset it to use the individual `VITE_*` variables. |
+| App boots with no modules after a full override | The JSON is valid but `modules` is empty/missing. Add the bundled module names; verify with `curl /config.json`. |
 | API calls fail with CORS errors | `VITE_API_BASE` origin differs from the app origin and the backend does not allow it. Fix CORS or serve the API under the same domain. |
 | Certbot fails validation | DNS not propagated, port 80 blocked, or another server block answers for the domain. Fix DNS/`ufw`, then re-run `certbot --nginx`. |
 | HTTPS works but old HTTP bookmarks break | Enable the redirect (`certbot --nginx --redirect`) or add `return 301 https://$host$request_uri;`. |
@@ -682,6 +692,14 @@ services:
         max-file: "3"
     security_opt:
       - no-new-privileges:true
+```
+
+Full-override variant (CI-driven config) — replace the `environment:` block of the service above with:
+
+```yaml
+    environment:
+      VITE_CONFIG_JSON: |
+        {"client":"client-a","modules":["user-management","product-management"],"apiBase":"https://api.example.com","featureFlags":{"enableAuditLive":false}}
 ```
 
 ### A.3 Host nginx site (`/etc/nginx/sites-available/arsi-client-a`)
