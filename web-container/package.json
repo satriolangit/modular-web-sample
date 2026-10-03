@@ -23,6 +23,7 @@
     "pretest": "npm run gen:modules",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:entrypoint": "sh docker/entrypoint.test.sh",
     "lint": "eslint . --ext .ts,.tsx",
     "check:dockerfile": "node scripts/check-dockerfile-modules.mjs"
   },
