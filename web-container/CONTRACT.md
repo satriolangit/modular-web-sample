@@ -119,7 +119,7 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 
 **Verifikasi wajib saat menambah dependency:**
 
-1. `typecheck` + `lint` + `test` + `build:client-a` lulus (semua package terdampak).
+1. `typecheck` + `lint` + `test` + `npm run build` lulus (semua package terdampak).
 2. Tidak ada duplikat di bundle: `grep node_modules/<pkg> web-container/dist/client-a/assets/*.map` → 1 root.
 3. Ukuran chunk tidak membengkak tanpa alasan (diff sebelum/sesudah).
 
@@ -128,7 +128,7 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 ### 1.7 Generated Loader Map
 
 - `web-container/src/bootstrap/moduleLoaders.generated.ts` **di-generate** oleh `scripts/generate-module-loaders.mjs` dari `web-modules/modules/*/package.json` (field `name`).
-- File generated **wajib** di-commit dan **dilarang** diedit manual; regenerate via `npm run gen:modules` (otomatis lewat pre-hooks `predev:client-a`, `pretypecheck`, `pretest`, `prebuild:client-a`).
+- File generated **wajib** di-commit dan **dilarang** diedit manual; regenerate via `npm run gen:modules` (otomatis lewat pre-hooks `predev`, `pretypecheck`, `pretest`, `prebuild`).
 - Konvensi nama: folder = nama di `config.modules` = suffix `name` package (`@arsi/module-<folder>`); mismatch membuat script gagal.
 - `discover.ts` hanya mengonsumsi map — menambah modul **tidak** mengubah `discover.ts`, `aliases.cjs`, atau `tsconfig.json`.
 - Sync test (`moduleLoaders.generated.test.ts`) **wajib** lulus — menjamin file generated tidak stale.
@@ -1019,7 +1019,7 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 
 | Environment | Sumber                                                  |
 | ----------- | ------------------------------------------------------- |
-| Dev lokal   | `web-container/public/config.json`                      |
+| Dev lokal   | dev server env-driven (selaras production); `public/config.json` = fallback |
 | Production  | `/config.json` di-generate entrypoint dari env variable (`VITE_*`; override penuh via `VITE_CONFIG_JSON`) |
 
 ### 14.2 Struktur Config
@@ -1224,11 +1224,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.7.2
+**Document version**: 0.7.3
 **Last updated**: 2026-10-03
 
 **Changelog:**
 
+- **0.7.3** — Dev env-driven: script generik `dev`/`build` membaca symlink `current-client` (atau `VITE_CLIENT` dari `.env`); `/config.json` dev digenerate dev server dari env (mapping sama dengan production, termasuk `VITE_CONFIG_JSON`); script per-client dihapus; §14.1 diperbarui.
 - **0.7.2** — Struktur repo: extension default `web-extension-base` → `web-extension-default` (package `@arsi/extension-default`); repo client `arsi-web-client-<x>` (checkout `web-extension-client-<x>`, client id `client-<x>`); `web-extension-template` menjadi bagian repo base; script `npm run link:base` untuk base. Aturan §1.6/§15 diperbarui.
 - **0.7.1** — Override penuh `config.json` via env runtime `VITE_CONFIG_JSON` (entrypoint base, validasi fail-fast, env individual diabaikan bila diisi); aturan §14.1/§14.3 diperbarui.
 - **0.7.0** — Base image & extension deployment: Dockerfile pindah ke root repo base (`arsi-web-base`) dengan base image multi-target (builder + runtime, Node 22 builder); extension `FROM` base image tanpa `COPY` modul; `manifest.json.baseVersion` pin exact + guard `check:base` saat build extension; aturan Docker di §1.6/§15/§16 diperbarui.

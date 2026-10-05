@@ -96,17 +96,17 @@ CLIENT=base npm run build:client    # pre-hook runs automatically: gen:modules
 # output: web-container/dist/base/
 ```
 
-Per-client development keeps using the client-specific scripts:
+Development uses the generic scripts (client from the symlink/`.env`):
 
 ```bash
 cd web-container
-npm run link:client-a               # or: CLIENT=client-a npm run link:client
-npm run dev:client-a
+CLIENT=client-a npm run link:client  # symlink current-client -> ../web-extension-client-a
+npm run dev                          # client from the symlink; /config.json generated from env
 ```
 
 Notes:
 
-- `build:client` / `build:client-a` run the **pre-hook** `gen:modules` (the loader map is generated from `web-modules/modules/*/package.json`).
+- `build:client` / `build` run the **pre-hook** `gen:modules` (the loader map is generated from `web-modules/modules/*/package.json`).
 - Do not call `npx vite build` directly — the pre-hook will not run and the loader map can become stale.
 - Docker guard: `cd web-container && npm run check:dockerfile` ensures **every** `package.json` (including `web-extension-default`) is COPYed in the base repo root `Dockerfile`.
 
@@ -381,7 +381,7 @@ Manual checklist: login/module routes per `VITE_MODULES`, theme/locale, deep lin
 | Extension `npm ci` fails (lockfile) | The extension `package-lock.json` is out of sync with its `package.json` (or with this lockfile version). Run `npm install` in the extension repo, commit the new lockfile. |
 | `npm ci` fails in CI | Lockfile out of sync (new module not `npm install`ed in `web-modules`). Commit the lockfile. |
 | Deep link returns 404 | `try_files` is missing/changed in nginx — ensure `nginx.conf` uses `try_files $uri $uri/ /index.html`. |
-| Loader map stale in the image | The build was invoked outside `npm run build:client` / `build:client-a` (the `gen:modules` pre-hook did not run). Use the npm script. |
+| Loader map stale in the image | The build was invoked outside `npm run build:client` / `npm run build` (the `gen:modules` pre-hook did not run). Use the npm script. |
 | Docker build wrong context (`COPY failed`) | The base must be built from the base repo root; an extension from the extension repo root. The `ci/build-*.sh` scripts already run `docker build` from the correct directory. |
 | Assets 404 after deploy | Did the Vite `base` change? Do not change it without coordination; assets are served from `/assets/`. |
 | `pull access denied` / 401 on base image | The base builder/runtime is private; run `docker login` (CI token) before building the extension. |

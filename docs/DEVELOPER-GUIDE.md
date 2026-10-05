@@ -44,11 +44,11 @@ echo "web-extension-*/" >> .git/info/exclude   # clone extension jangan ikut ter
 
 # 3) Install dependency (urutan: modules → container → extension)
 (cd web-modules && npm ci)
-(cd web-container && npm ci && npm run link:client-a)
+(cd web-container && npm ci && CLIENT=client-a npm run link:client)
 (cd web-extension-client-a && npm ci)
 
 # 4) Jalankan dev server
-cd web-container && npm run dev:client-a   # http://localhost:5173
+cd web-container && npm run dev   # http://localhost:5173
 ```
 
 > Workspace sample ini sudah berisi semua folder (layout flat) — jika Anda bekerja di sample, lewati langkah clone dan mulai dari langkah 3.
@@ -109,7 +109,7 @@ Urutan penting: `web-modules` dulu (workspace package), lalu `web-container`, la
 ```bash
 cd arsi-web-base
 (cd web-modules && npm ci)
-(cd web-container && npm ci && npm run link:client-a)   # link current-client ke extension aktif
+(cd web-container && npm ci && CLIENT=client-a npm run link:client)   # link current-client ke extension aktif
 (cd web-extension-client-a && npm ci)
 ```
 
@@ -122,10 +122,10 @@ cd arsi-web-base
 
 ```bash
 cd arsi-web-base/web-container
-npm run dev:client-a          # http://localhost:5173
+npm run dev          # http://localhost:5173
 ```
 
-- Config dev dibaca dari `web-container/public/config.json` (client-a, 3 module, `apiBase` dummyjson). Ubah file itu untuk mencoba kombinasi module lain.
+- Config dev digenerate dev server dari env: client dari symlink `current-client` (atau `VITE_CLIENT` di `web-container/.env`, gitignored); `VITE_MODULES` (CSV), `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`, atau `VITE_CONFIG_JSON` (override penuh). `public/config.json` hanya fallback — tidak perlu diubah per client.
 - Hot reload untuk perubahan `web-modules/` dan extension aktif.
 - **Restart** dev server setelah: menambah module (loader map di-generate) atau mengganti client (symlink berubah).
 - Cek cepat: halaman login tampil, menu sesuai `modules` di config, tidak ada error di console.
@@ -191,19 +191,19 @@ Clone & layout: §0.3. Untuk workspace sample ini (semua folder sudah bersaudara
 
 ```bash
 cd web-modules && npm ci
-cd ../web-container && npm ci && npm run link:client-a
+cd ../web-container && npm ci && CLIENT=client-a npm run link:client
 cd ../web-extension-client-a && npm ci
 ```
 
-Jalankan dev server: `cd web-container && npm run dev:client-a` → http://localhost:5173 (§0.5).
+Jalankan dev server: `cd web-container && npm run dev` → http://localhost:5173 (§0.5).
 
 ### 1.4 Perintah harian
 
 | Kebutuhan | Perintah |
 | --- | --- |
-| Dev server client-a | `cd web-container && npm run dev:client-a` (http://localhost:5173) |
-| Ganti client aktif | `cd web-container && CLIENT=<client> npm run link:client` (atau `npm run link:client-a`); restart dev server |
-| Build client | `cd web-container && CLIENT=<client> npm run build:client` → `dist/<client>/` (client-a: `npm run build:client-a`) |
+| Dev server (client aktif) | `cd web-container && npm run dev` (http://localhost:5173) |
+| Ganti client aktif | `cd web-container && CLIENT=<client> npm run link:client`; restart dev server |
+| Build client | `cd web-container && CLIENT=<client> npm run build:client` → `dist/<client>/` (atau dari symlink: `npm run build`) |
 | Build base (image default) | `cd web-container && npm run link:base && CLIENT=base npm run build:client` → `dist/base/` |
 | Test | `npm test` di repo mana pun (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
@@ -660,14 +660,14 @@ Loader map `web-container/src/bootstrap/moduleLoaders.generated.ts` **di-generat
 | File | Yang ditambahkan |
 | --- | --- |
 | `Dockerfile` (root repo base) | `COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/` sebelum `npm ci` (+ `npm run check:dockerfile` di `web-container`) |
-| `web-container/public/config.json` | `"modules": [..., "order-management"]` (dev; produksi dikelola CI) |
+| `web-container/.env` (`VITE_MODULES=...`) | `VITE_MODULES=user-management,order-management` (dev; produksi dikelola CI) |
 
 ```bash
 cd web-modules && npm install                 # lockfile workspace
 cd ../web-container && npm run gen:modules    # regenerate loader map
 ```
 
-- `gen:modules` otomatis lewat pre-hooks: `predev:client-a`, `pretypecheck`, `pretest`, `prebuild:client-a`.
+- `gen:modules` otomatis lewat pre-hooks: `predev`, `pretypecheck`, `pretest`, `prebuild`.
 - Sync test `moduleLoaders.generated.test.ts` gagal bila file generated stale.
 - Konvensi: nama folder = nama di `config.modules` = suffix `name` package (`@arsi/module-<folder>`); mismatch → script gagal.
 - Alias wildcard `@arsi/module-*` dan `@arsi/module-*/entry` sudah tersedia; **pola `/entry` wajib di atas pola base** (Vite & TS memilih pola pertama yang match).
@@ -690,9 +690,9 @@ Pola mocking lengkap di [bagian 6](#6-testing-playbook).
 
 ```bash
 cd web-modules && npm run typecheck && npm test && npm run lint
-cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
+cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build
 cd ../web-container && npm run link:base && CLIENT=base npm run build:client   # verifikasi image base
-cd ../web-container && npm run link:client-a && npm run dev:client-a
+cd ../web-container && CLIENT=client-a npm run link:client && npm run dev
 # buka http://localhost:5173 → menu Orders muncul, halaman render
 ```
 
@@ -1032,14 +1032,14 @@ Dipakai bila repo/folder `web-extension-client-<x>` **belum ada**:
    ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
    ```
 
-6. Dev lokal opsional (symlink `current-client` + script `dev:<client>`):
+6. Dev lokal opsional (symlink `current-client` + `npm run dev`):
 
    ```bash
    cd web-extension-client-<x>
    npm ci                                 # install dependency extension
    cd ../web-container
    CLIENT=client-<x> npm run link:client  # symlink current-client -> ../web-extension-client-<x>
-   # tambahkan script "dev:client-<x>" seperti dev:client-a, lalu jalankan
+   npm run dev                            # client dari symlink/.env; /config.json digenerate dev server
    ```
 
 `ci/build-client.sh` menjalankan verifikasi extension (typecheck/test/lint) di dalam base builder image; `check:base` memastikan `baseVersion` cocok dengan base yang dipakai. Detail build/run/rollback: `DEPLOYMENT-GUIDE.md` §3–§5; walkthrough end-to-end: `ZERO-TO-DEPLOY-GUIDE.md` §4.1.
@@ -1053,13 +1053,13 @@ CLIENT=client-a npm run link:client      # symlink current-client -> ../web-exte
 readlink current-client                  # pastikan benar
 
 # 2) jalankan dev server
-npm run dev:client-a                     # http://localhost:5173
+npm run dev                     # http://localhost:5173
 ```
 
 - Perubahan hanya di `src/` extension langsung hot-reload; **restart** dev server setelah menambah module atau mengganti client (loader map & symlink statis).
 - Uji extension: `cd web-extension-client-a && npm run typecheck && npm test && npm run lint`.
 - Override module yang belum pernah di-import extension butuh alias `@arsi/module-<name>` di `aliases.cjs` + `tsconfig.json` extension (lihat §4.2).
-- Debug cepat: `readlink web-container/current-client`; jalankan `npm run link:client-a` bila menunjuk extension yang salah.
+- Debug cepat: `readlink web-container/current-client`; jalankan `CLIENT=client-a npm run link:client` bila menunjuk extension yang salah.
 
 ### 4.11 Adopsi base versi baru (bump `baseVersion`)
 
@@ -1224,7 +1224,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 | Test gagal "found multiple elements" | RTL tidak cleanup (globals off). Pastikan `vitest.setup.ts` memanggil `cleanup()` di `afterEach`. |
 | `init` jalan dua kali saat dev | React StrictMode. Container sudah `runOnce`; module/extension tetap **wajib** punya guard `initialized`. |
 | Perubahan tidak muncul setelah ganti client | Symlink `current-client` berubah → restart dev server. |
-| `current-client` menunjuk extension yang salah | Salah nama `CLIENT` atau link lama tertinggal. Cek `readlink web-container/current-client`; ulangi `npm run link:client-a` / `CLIENT=<client> npm run link:client`, lalu restart dev server. |
+| `current-client` menunjuk extension yang salah | Salah nama `CLIENT` atau link lama tertinggal. Cek `readlink web-container/current-client`; ulangi `CLIENT=<client> npm run link:client`, lalu restart dev server. |
 | Engine warning saat `npm install` | Node lokal > versi target beberapa paket; aman diabaikan selama test lulus. CI/Docker memakai Node 22. |
 | Mutasi DummyJSON "tidak tersimpan" | Memang simulasi (create/update/delete tidak persist). Pilot memakai strategi optimistic cache + rollback; saat backend nyata tambahkan `invalidateQueries` di `onSettled`. |
 | Search Topbar tidak memfilter produk | Listener `containerEvents.searchChanged` tidak ter-register (cek `init`) atau modul product tidak aktif di `config.json`. Listen lewat konstanta, bukan string literal. |
@@ -1256,7 +1256,7 @@ Lengkap: `product-management/events/containerSearch.test.ts`.
 - [ ] Store memakai persist key `module:<name>`; devtools via `isDev`.
 - [ ] `public.ts` diperbarui; alias/tsconfig/discover/config.json ter-wiring.
 - [ ] Test ditambahkan (service, query keys, store, public API, komponen).
-- [ ] `typecheck`, `test`, `lint`, `check:dockerfile`, `build:client-a` lulus (build image base: `CLIENT=base npm run build:client`).
+- [ ] `typecheck`, `test`, `lint`, `check:dockerfile`, `build` lulus (build image base: `CLIENT=base npm run build:client`).
 
 **Extension**
 

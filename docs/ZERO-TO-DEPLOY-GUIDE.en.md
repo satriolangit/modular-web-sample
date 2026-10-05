@@ -94,12 +94,12 @@ Start the dev server to confirm the workspace is healthy:
 
 ```bash
 cd web-container
-npm run dev:client-a        # http://localhost:5173
+npm run dev        # http://localhost:5173
 ```
 
 Notes:
 
-- `npm run dev:client-a` reads dev config from `web-container/public/config.json`. For a new client, add a `dev:<client>` script like `dev:client-a` in `web-container/package.json` (once) — details: `DEVELOPER-GUIDE.en.md` §4.10.
+- `npm run dev` takes the client from the `current-client` symlink (or `VITE_CLIENT` in `.env`) and generates `/config.json` from env (`VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`, or `VITE_CONFIG_JSON`); `public/config.json` is only a fallback. Details: `DEVELOPER-GUIDE.en.md` §0.5.
 - Switch the active client: `CLIENT=<client> npm run link:client`, then restart the dev server.
 - Full laptop setup (nvm/WSL): `DEVELOPER-GUIDE.en.md` §0.
 
@@ -153,7 +153,7 @@ git push -u origin main
 Verify locally:
 
 ```bash
-cd ../web-container && CLIENT=client-<x> npm run link:client && npm run dev:client-a
+cd ../web-container && CLIENT=client-<x> npm run link:client && npm run dev
 cd ../web-extension-client-<x> && npm run typecheck && npm run test --if-present && npm run lint
 ```
 

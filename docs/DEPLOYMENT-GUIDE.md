@@ -96,17 +96,17 @@ CLIENT=base npm run build:client    # pre-hook otomatis: gen:modules
 # output: web-container/dist/base/
 ```
 
-Dev per client tetap memakai script khusus:
+Dev memakai script generik (client dari symlink/`.env`):
 
 ```bash
 cd web-container
-npm run link:client-a               # atau: CLIENT=client-a npm run link:client
-npm run dev:client-a
+CLIENT=client-a npm run link:client  # symlink current-client -> ../web-extension-client-a
+npm run dev                          # client dari symlink; /config.json digenerate dari env
 ```
 
 Catatan:
 
-- `build:client` / `build:client-a` menjalankan **pre-hook** `gen:modules` (loader map di-generate dari `web-modules/modules/*/package.json`).
+- `build:client` / `build` menjalankan **pre-hook** `gen:modules` (loader map di-generate dari `web-modules/modules/*/package.json`).
 - Jangan memanggil `npx vite build` langsung — pre-hook tidak jalan dan loader map bisa stale.
 - Guard Docker: `cd web-container && npm run check:dockerfile` memastikan **semua** `package.json` (termasuk `web-extension-default`) sudah di-COPY di `Dockerfile` root repo base.
 
@@ -381,7 +381,7 @@ Checklist manual: login/route modul sesuai `VITE_MODULES`, theme/locale, deep-li
 | `npm ci` extension gagal (lockfile) | `package-lock.json` extension tidak sinkron dengan `package.json`-nya (atau dengan lockfile versi ini). Jalankan `npm install` di repo extension, commit lockfile baru. |
 | `npm ci` gagal di CI | Lockfile tidak sinkron (modul baru belum `npm install` di `web-modules`). Commit lockfile. |
 | Deep link 404 | `try_files` nginx hilang/berubah — pastikan `nginx.conf` memakai `try_files $uri $uri/ /index.html`. |
-| Loader map stale di image | Build dipanggil bukan lewat `npm run build:client` / `build:client-a` (pre-hook `gen:modules` tidak jalan). Pakai script npm. |
+| Loader map stale di image | Build dipanggil bukan lewat `npm run build:client` / `npm run build` (pre-hook `gen:modules` tidak jalan). Pakai script npm. |
 | Docker build konteks salah (`COPY failed`) | Base wajib dibuild dari root repo base; extension dari root repo extension. Skrip `ci/build-*.sh` sudah menjalankan `docker build` dari direktori yang benar. |
 | Asset 404 setelah deploy | Base path berubah? Jangan ubah `base` Vite tanpa koordinasi; aset dilayani dari `/assets/`. |
 | `pull access denied` / 401 base image | Base builder/runtime private; jalankan `docker login` (token CI) sebelum build extension. |

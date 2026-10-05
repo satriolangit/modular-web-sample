@@ -94,12 +94,12 @@ Jalankan dev server untuk memastikan workspace sehat:
 
 ```bash
 cd web-container
-npm run dev:client-a        # http://localhost:5173
+npm run dev        # http://localhost:5173
 ```
 
 Catatan:
 
-- `npm run dev:client-a` membaca config dev dari `web-container/public/config.json`. Untuk client baru, tambahkan script `dev:<client>` seperti `dev:client-a` di `web-container/package.json` (sekali saja) — detail: `DEVELOPER-GUIDE.md` §4.10.
+- `npm run dev` mengambil client dari symlink `current-client` (atau `VITE_CLIENT` di `.env`) dan men-generate `/config.json` dari env (`VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`, atau `VITE_CONFIG_JSON`); `public/config.json` hanya fallback. Detail: `DEVELOPER-GUIDE.md` §0.5.
 - Ganti client aktif: `CLIENT=<client> npm run link:client`, lalu restart dev server.
 - Setup laptop lengkap (nvm/WSL): `DEVELOPER-GUIDE.md` §0.
 
@@ -153,7 +153,7 @@ git push -u origin main
 Verifikasi lokal:
 
 ```bash
-cd ../web-container && CLIENT=client-<x> npm run link:client && npm run dev:client-a
+cd ../web-container && CLIENT=client-<x> npm run link:client && npm run dev
 cd ../web-extension-client-<x> && npm run typecheck && npm run test --if-present && npm run lint
 ```
 

@@ -334,7 +334,7 @@ export default async function init(deps) {
 
 | Environment | Sumber                                                  |
 | ----------- | ------------------------------------------------------- |
-| Dev lokal   | `web-container/public/config.json`                      |
+| Dev lokal   | dev server env-driven (selaras production); `public/config.json` = fallback |
 | Production  | `/config.json` di-generate entrypoint dari env variable |
 
 ### 6.2 Struktur Config
@@ -1040,8 +1040,8 @@ Panduan langkah lengkap untuk DevOps (build, run Docker, CI, rollback, smoke tes
 
 ```bash
 cd web-container
-npm run link:client-a        # symlink current-client -> ../web-extension-client-a
-npm run build:client-a       # output: dist/client-a/
+CLIENT=client-a npm run link:client   # symlink current-client -> ../web-extension-client-a
+npm run build                        # output: dist/client-a/ (dari symlink)
 ```
 
 Base default (extension `web-extension-default`, client `base`):
@@ -1241,7 +1241,7 @@ git clone <web-extension-client-a-url>
 cd web-container
 ln -sfn ../web-extension-client-a current-client
 npm install
-npm run dev:client-a
+npm run dev
 ```
 
 ### 19.2 Ganti Client
@@ -1251,11 +1251,10 @@ npm run dev:client-a
 ```bash
 cd web-container
 CLIENT=client-b npm run link:client   # symlink current-client -> ../web-extension-client-b
-# Dev server: tambahkan script dev:<client> di web-container seperti dev:client-a,
-# lalu jalankan `npm run dev:<client>`.
+npm run dev                           # client dari symlink; /config.json digenerate dari env
 ```
 
-Script generik: `link:client` dan `build:client` (butuh env `CLIENT`); **tidak ada** script dev generik — script `dev:<client>` ditambahkan per client (contoh `dev:client-a`). Detail: `DEPLOYMENT-GUIDE.md` §3.3.
+Script generik: `link:client`/`build:client` (butuh env `CLIENT`) dan `dev`/`build` (client dari symlink `current-client`; `/config.json` dev digenerate dari env seperti production). Detail: `DEPLOYMENT-GUIDE.md` §3.3.
 
 **Docker/CI** tidak memakai symlink di repo: tiap repo extension membangun image client sendiri via `ci/build-client.sh` (`FROM` base image; folder extension di `/app/extension`, symlink dibuat saat build). Lihat §16.2.
 
@@ -1266,7 +1265,7 @@ Script generik: `link:client` dan `build:client` (butuh env `CLIENT`); **tidak a
 3. Buat `routes/`, `services/`, `hooks/`, `components/`, `slots.ts`, `queryKeys.ts`, `i18n/`.
 4. Jalankan `npm run gen:modules` di web-container (otomatis via pre-hooks) — loader map di-generate dari `package.json` name; **tidak ada** edit `discover.ts`/alias/tsconfig.
 5. Tambah `COPY web-modules/modules/<name>/package.json ...` di Dockerfile + `npm run check:dockerfile`.
-6. Tambah ke `config.modules` (dev: `public/config.json`; produksi dikelola CI).
+6. Tambah ke `config.modules` (dev: `VITE_MODULES` di `web-container/.env`; produksi dikelola CI).
 
 ### 19.4 Tambah Client Baru
 
@@ -1278,7 +1277,7 @@ Script generik: `link:client` dan `build:client` (butuh env `CLIENT`); **tidak a
 ```bash
 cd web-container
 CLIENT=client-x npm run link:client   # symlink current-client -> ../web-extension-client-x
-# tambahkan script dev:<client> seperti dev:client-a, lalu jalankan script tersebut
+npm run dev                           # client dari symlink; /config.json digenerate dari env
 ```
 
 Perintah dev lengkap: `DEPLOYMENT-GUIDE.md` §3.3.
