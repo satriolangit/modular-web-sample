@@ -133,10 +133,27 @@ Adjust:
 3. `src/index.tsx` → default export `init(deps)`; register overrides (slot/route/service/i18n) there.
 4. Add the `@arsi/module-<name>` alias in `aliases.cjs` + `tsconfig.json` for every overridden module (details: `DEVELOPER-GUIDE.en.md` §4.2).
 
+### 4.1 Make it its own Git repo
+
+The client folder lives **inside** the base repo directory (it must be a sibling for the symlink/aliases), but it is **not** part of the base repo. Create an empty `arsi-web-client-<x>` repo in the `satriolangit` GitHub org, then:
+
+```bash
+# inside web-extension-client-<x>
+git init -b main
+git add .
+git commit -m "feat: initial extension client-<x>"
+git remote add origin <git-url-arsi-web-client-<x>>
+git push -u origin main
+```
+
+- The base repo's `.git/info/exclude` (Stage 1) contains `web-extension-*/` so the client folder **does not show up in the base repo's `git status`** and is **never committed to the base repo**. This ignore only applies to **untracked** files; if the folder was already `git add`ed, remove it with `git rm -r --cached web-extension-client-<x>`. Never use `git add -f`.
+- `web-extension-default/` and `web-extension-template/` are **intentionally tracked** in the base repo (they are part of the base); the ignore pattern does not affect tracked files.
+- Verify: `cd ..` (base repo) → `git status` must be **clean**, and `git check-ignore -v web-extension-client-<x>/` must point to `.git/info/exclude`.
+
 Verify locally:
 
 ```bash
-cd ../web-container && CLIENT=<client> npm run link:client && npm run dev:client-a
+cd ../web-container && CLIENT=client-<x> npm run link:client && npm run dev:client-a
 cd ../web-extension-client-<x> && npm run typecheck && npm run test --if-present && npm run lint
 ```
 

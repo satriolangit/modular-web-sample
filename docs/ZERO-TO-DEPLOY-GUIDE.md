@@ -133,10 +133,27 @@ Sesuaikan:
 3. `src/index.tsx` → default export `init(deps)`; daftarkan override (slot/route/service/i18n) di sini.
 4. Tambahkan alias `@arsi/module-<name>` di `aliases.cjs` + `tsconfig.json` untuk setiap module yang di-override (detail: `DEVELOPER-GUIDE.md` §4.2).
 
+### 4.1 Jadikan repo Git sendiri
+
+Folder client berada **di dalam** direktori base repo (wajib sibling untuk symlink/alias), tetapi **bukan** bagian dari repo base. Buat repo kosong `arsi-web-client-<x>` di GitHub org `satriolangit`, lalu:
+
+```bash
+# di dalam web-extension-client-<x>
+git init -b main
+git add .
+git commit -m "feat: initial extension client-<x>"
+git remote add origin <git-url-arsi-web-client-<x>>
+git push -u origin main
+```
+
+- `.git/info/exclude` di base repo (Tahap 1) memuat `web-extension-*/` agar folder client **tidak muncul di `git status`** base dan **tidak ikut ter-commit** ke repo base. Ignore ini hanya berlaku untuk file **untracked**; kalau folder terlanjur ter-`git add`, keluarkan dengan `git rm -r --cached web-extension-client-<x>`. Jangan pakai `git add -f`.
+- `web-extension-default/` dan `web-extension-template/` **sengaja tracked** di repo base (bagian dari base); pola ignore tidak memengaruhi file yang sudah tracked.
+- Verifikasi: `cd ..` (base repo) → `git status` harus **clean**, dan `git check-ignore -v web-extension-client-<x>/` harus menunjuk `.git/info/exclude`.
+
 Verifikasi lokal:
 
 ```bash
-cd ../web-container && CLIENT=<client> npm run link:client && npm run dev:client-a
+cd ../web-container && CLIENT=client-<x> npm run link:client && npm run dev:client-a
 cd ../web-extension-client-<x> && npm run typecheck && npm run test --if-present && npm run lint
 ```
 
