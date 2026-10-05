@@ -2,7 +2,7 @@
 
 **Version**: 0.1.0
 **Location**: `web-container/CONTRACT.md`
-**Audience**: Developer `web-container`, `web-modules`, `web-extension-<client>`
+**Audience**: Developer `web-container`, `web-modules`, `web-extension-client-<x>`
 
 > Dokumen ini adalah **kontrak keras**. Semua kode di ketiga repo wajib mengikuti aturan di sini. Pelanggaran kontrak = PR ditolak.
 
@@ -42,7 +42,7 @@
 | Container | `web-container`              | Shell: auth, routing, layout, DI, config, API client, event bus |
 | Shared    | `web-modules/shared`         | UI kit (shadcn-ui), hooks, utils                                |
 | Module    | `web-modules/modules/<name>` | Fitur bisnis                                                    |
-| Extension | `web-extension-<client>`     | Override per client                                             |
+| Extension | `web-extension-client-<x>`     | Override per client                                             |
 
 ### 1.2 Dependency Matrix
 
@@ -104,7 +104,7 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 | Container/shell saja | `web-container` | radix dialog, sonner |
 | UI kit (modul + extension) | `web-modules/shared` | radix, lucide, CVA |
 | Fitur modul | `web-modules` workspace | `cd web-modules && npm install <pkg> -w @arsi/module-<name>` |
-| Khusus client | `web-extension-<client>` | axios, react-router-dom |
+| Khusus client | `web-extension-client-<x>` | axios, react-router-dom |
 
 **Aturan keras:**
 
@@ -114,7 +114,7 @@ Import dari file lain di luar public API adalah **pelanggaran kontrak**.
 - Dilarang menambah library yang menduplikasi kapabilitas container: toast, modal, notifikasi, i18n, React Query, HTTP client, event bus.
 - Modul/extension **dilarang** punya Tailwind/PostCSS config; plugin Tailwind hanya di `shared/tailwind.preset.cjs`.
 - Global CSS dari library **dilarang** di-import dari modul; import hanya di `web-container/src/styles/globals.css`.
-- Dockerfile base ada di **root repo base** (`arsi-web-base` = `web-container` + `web-modules` + `web-extension-base`); package workspace baru (modul) → tambah `COPY <package.json>` di Dockerfile root, jalankan `npm run check:dockerfile` di `web-container` (guard memvalidasi Dockerfile root, termasuk `web-extension-base/package.json`); lockfile **wajib** di-commit.
+- Dockerfile base ada di **root repo base** (`arsi-web-base` = `web-container` + `web-modules` + `web-extension-default` + `web-extension-template`); package workspace baru (modul) → tambah `COPY <package.json>` di Dockerfile root, jalankan `npm run check:dockerfile` di `web-container` (guard memvalidasi Dockerfile root, termasuk `web-extension-default/package.json`); lockfile **wajib** di-commit.
 - Repo extension **tidak** menambah `COPY` modul — build memakai base builder image (`/app/extension`, symlink `current-client -> ../extension`); extension **wajib** pin `manifest.json.baseVersion` exact ke versi base (dicek `npm run check:base` saat build image client).
 
 **Verifikasi wajib saat menambah dependency:**
@@ -1070,7 +1070,10 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 | Service name           | `<module>` atau `<client>.<service>` | `user`, `client-a.audit`                  |
 | Query key root         | `[<module>, <entity>]`               | `['user-management', 'user']`             |
 | Store persist key      | `<layer>:<name>`                     | `module:user-management`                  |
-| Docker image           | `<org>/arsi-web-base` (base), `<org>/arsi-web-<client>` (client) | `<org>/arsi-web-base`, `<org>/arsi-web-client-a` |
+| Repo base              | `arsi-web-base`                      | `arsi-web-base`                           |
+| Repo client            | `arsi-web-client-<x>`                | `arsi-web-client-bca`                     |
+| Client id (`manifest`) | `client-<x>`                         | `client-bca`                              |
+| Docker image           | `<org>/arsi-web-base` (base), `<org>/arsi-web-<client>` (client) | `<org>/arsi-web-base`, `<org>/arsi-web-client-bca` |
 | Docker image tag       | `<ver>` (runtime), `<ver>-builder` (builder) | `0.1.0`, `0.1.0-builder`                  |
 
 ---
@@ -1221,11 +1224,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.7.1
+**Document version**: 0.7.2
 **Last updated**: 2026-10-03
 
 **Changelog:**
 
+- **0.7.2** — Struktur repo: extension default `web-extension-base` → `web-extension-default` (package `@arsi/extension-default`); repo client `arsi-web-client-<x>` (checkout `web-extension-client-<x>`, client id `client-<x>`); `web-extension-template` menjadi bagian repo base; script `npm run link:base` untuk base. Aturan §1.6/§15 diperbarui.
 - **0.7.1** — Override penuh `config.json` via env runtime `VITE_CONFIG_JSON` (entrypoint base, validasi fail-fast, env individual diabaikan bila diisi); aturan §14.1/§14.3 diperbarui.
 - **0.7.0** — Base image & extension deployment: Dockerfile pindah ke root repo base (`arsi-web-base`) dengan base image multi-target (builder + runtime, Node 22 builder); extension `FROM` base image tanpa `COPY` modul; `manifest.json.baseVersion` pin exact + guard `check:base` saat build extension; aturan Docker di §1.6/§15/§16 diperbarui.
 - **0.6.0** — Generated Loader Map (§1.7): map entry di-generate dari `package.json` name, alias wildcard (§1.5), sync test, pre-hooks; menambah modul tidak menyentuh `discover.ts`/alias/tsconfig.

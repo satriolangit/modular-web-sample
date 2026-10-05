@@ -35,7 +35,7 @@
 | Stage | Outcome | Key command |
 | --- | --- | --- |
 | 1. Clone | base + extension workspace side by side | `git clone <git-url-arsi-web-base> arsi-web-base` |
-| 2. Extension | `web-extension-<client>` repo with `manifest.json` | copy the template / clone the extension repo |
+| 2. Extension | `web-extension-client-<x>` repo with `manifest.json` | copy the template / clone the extension repo |
 | 3. Compile | `satriolangit/arsi-web-base:<ver>[-builder]` + `satriolangit/arsi-web-<client>:<buildId>` | `ci/build-base.sh`, `ci/build-client.sh` |
 | 4. Deploy | container running on the VM + HTTPS | `docker compose pull && docker compose up -d` |
 | 5. Verify | `/config.json` matches the environment | `curl https://app.example.com/config.json` |
@@ -44,8 +44,8 @@ Repo responsibilities:
 
 | Repo | Contents | When it changes |
 | --- | --- | --- |
-| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-base` | shell, UI kit, business modules, base releases |
-| `arsi-extension-<client>` (1 repo per client) | client-specific overrides (`src/`) | client slots/routes/services/i18n |
+| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-default` + `web-extension-template` | shell, UI kit, business modules, base releases, client template |
+| `arsi-web-client-<x>` (1 repo per client) | client-specific overrides (`src/`) | client slots/routes/services/i18n |
 
 Key rules: **the extension is fixed at build time** (1 repo = 1 client image), **modules are activated at deploy time** (`VITE_MODULES`), and **the full config can be overridden at deploy time** (`VITE_CONFIG_JSON`).
 
@@ -66,7 +66,7 @@ Key rules: **the extension is fixed at build time** (1 repo = 1 client image), *
 Repo URLs (placeholders — replace with the real URLs):
 
 - base: `<git-url-arsi-web-base>`
-- extension: `<git-url-arsi-extension-<client>>`
+- extension: `<git-url-arsi-web-client-<x>>`
 
 ---
 
@@ -78,7 +78,7 @@ The extension **must** live inside the base repo folder (the `current-client` sy
 mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <git-url-arsi-web-base> arsi-web-base
 cd arsi-web-base
-git clone <git-url-arsi-extension-<client>> web-extension-<client>
+git clone <git-url-arsi-web-client-<x>> web-extension-client-<x>
 echo "web-extension-*/" >> .git/info/exclude   # keep the extension clone out of the base repo
 ```
 
@@ -87,7 +87,7 @@ Install dependencies (order: modules → container → extension):
 ```bash
 (cd web-modules && npm ci)
 (cd web-container && npm ci && CLIENT=<client> npm run link:client)
-(cd web-extension-<client> && npm ci)
+(cd web-extension-client-<x> && npm ci)
 ```
 
 Start the dev server to confirm the workspace is healthy:
@@ -107,22 +107,22 @@ Notes:
 
 ## 4. Stage 2 — Create the Client Extension
 
-If the extension repo does not exist yet, create it from the template:
+If the client repo does not exist yet, create it from the template (the `web-extension-template` folder in the base repo):
 
 ```bash
 cd arsi-web-base
-cp -R web-extension-template web-extension-<client>
-cd web-extension-<client>
+cp -R web-extension-template web-extension-client-<x>
+cd web-extension-client-<x>
 rm -rf node_modules
 ```
 
 Adjust:
 
-1. `package.json` → `"name": "@arsi/extension-<client>"`.
+1. `package.json` → `"name": "@arsi/extension-client-<x>"`.
 2. `manifest.json`:
    ```json
    {
-     "client": "<client>",
+     "client": "client-<x>",
      "baseVersion": "0.1.0",
      "modules": { "user-management": "^0.1.0" },
      "shared": "^0.1.0",
@@ -137,7 +137,7 @@ Verify locally:
 
 ```bash
 cd ../web-container && CLIENT=<client> npm run link:client && npm run dev:client-a
-cd ../web-extension-<client> && npm run typecheck && npm run test --if-present && npm run lint
+cd ../web-extension-client-<x> && npm run typecheck && npm run test --if-present && npm run lint
 ```
 
 If the extension repo already exists (existing client), just clone it (Stage 1) and continue to Stage 3.
@@ -177,7 +177,7 @@ Result:
 From the **extension repo root**:
 
 ```bash
-cd ~/works/arsi/arsi-web-base/web-extension-<client>
+cd ~/works/arsi/arsi-web-base/web-extension-client-<x>
 ORG=satriolangit PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
 ```
 
@@ -197,7 +197,7 @@ cd ~/works/arsi/arsi-web-base
 ORG=satriolangit VERIFY=0 PUSH=0 ./ci/build-base.sh
 
 # local client
-cd web-extension-<client>
+cd web-extension-client-<x>
 ORG=satriolangit PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
 
 # run & check config

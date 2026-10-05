@@ -19,12 +19,12 @@ repo base (arsi-web-base)                       image base
 │ Dockerfile (multi-target)     │ ────────────► │ <org>/arsi-web-base:<ver>-builder  │
 │  web-container/               │               │  node:22-alpine + source           │
 │  web-modules/                 │               │  + node_modules + /app/BASE_VERSION│
-│  web-extension-base/          │               ├────────────────────────────────────┤
-│  ci/build-base.sh             │ ────────────► │ <org>/arsi-web-base:<ver>          │
-└───────────────────────────────┘               │  nginx:1.27-alpine + SPA base      │
-                                                └─────────────────┬──────────────────┘
+│  web-extension-default/       │               ├────────────────────────────────────┤
+│  web-extension-template/      │ ────────────► │ <org>/arsi-web-base:<ver>          │
+│  ci/build-base.sh             │               │  nginx:1.27-alpine + SPA base      │
+└───────────────────────────────┘               └─────────────────┬──────────────────┘
                                                                   │ FROM builder & runtime
-repo extension (arsi-extension-<client>)                          ▼
+repo client (arsi-web-client-<x>)                                 ▼
 ┌───────────────────────────────┐  build-client ┌────────────────────────────────────┐
 │ Dockerfile                    │ ────────────► │ <org>/arsi-web-<client>:<buildId>  │
 │ manifest.json (baseVersion)   │               │  nginx + dist client (1 image)     │
@@ -66,13 +66,14 @@ arsi-web-base/
 │   └── build-base.sh
 ├── web-container/
 ├── web-modules/
-└── web-extension-base/         # extension default (client: "base")
+├── web-extension-default/      # extension default (client: "base")
+└── web-extension-template/     # template untuk repo client baru
 ```
 
-### 3.2 Layout repo extension
+### 3.2 Layout repo client
 
 ```
-arsi-extension-<client>/
+arsi-web-client-<x>/            # repo client (checkout: web-extension-client-<x>)
 ├── Dockerfile                  # FROM base <ver>-builder → FROM base <ver>
 ├── .dockerignore
 ├── ci/
@@ -90,7 +91,7 @@ Build base default (`client: "base"`):
 
 ```bash
 cd web-container
-CLIENT=base npm run link:client     # symlink current-client -> ../web-extension-base
+npm run link:base     # symlink current-client -> ../web-extension-default
 CLIENT=base npm run build:client    # pre-hook otomatis: gen:modules
 # output: web-container/dist/base/
 ```
@@ -107,7 +108,7 @@ Catatan:
 
 - `build:client` / `build:client-a` menjalankan **pre-hook** `gen:modules` (loader map di-generate dari `web-modules/modules/*/package.json`).
 - Jangan memanggil `npx vite build` langsung — pre-hook tidak jalan dan loader map bisa stale.
-- Guard Docker: `cd web-container && npm run check:dockerfile` memastikan **semua** `package.json` (termasuk `web-extension-base`) sudah di-COPY di `Dockerfile` root repo base.
+- Guard Docker: `cd web-container && npm run check:dockerfile` memastikan **semua** `package.json` (termasuk `web-extension-default`) sudah di-COPY di `Dockerfile` root repo base.
 
 ### 3.4 Urutan verifikasi (wajib di CI)
 
@@ -115,8 +116,8 @@ Repo base:
 
 ```bash
 cd web-modules          && npm ci && npm run typecheck && npm test && npm run lint
-cd ../web-extension-base && npm ci && npm run typecheck && npm run lint
-cd ../web-container     && CLIENT=base npm run link:client && npm ci
+cd ../web-extension-default && npm ci && npm run typecheck && npm run lint
+cd ../web-container     && npm run link:base && npm ci
 npm run typecheck && npm test && npm run test:entrypoint && npm run check:dockerfile && CLIENT=base npm run build:client
 ```
 
@@ -153,12 +154,12 @@ Dockerfile root (`Dockerfile`) multi-target:
 
 | Stage | Isi |
 | --- | --- |
-| `builder` (`node:22-alpine`) | COPY `package.json` + lockfile per tree (web-container, web-modules, shared, tiap modul, web-extension-base) → `npm ci` per tree → COPY source → tulis `/app/BASE_VERSION` |
-| `base-app` | `FROM builder`; symlink `current-client -> ../web-extension-base`; `CLIENT=base npm run build:client` |
+| `builder` (`node:22-alpine`) | COPY `package.json` + lockfile per tree (web-container, web-modules, shared, tiap modul, web-extension-default) → `npm ci` per tree → COPY source → tulis `/app/BASE_VERSION` |
+| `base-app` | `FROM builder`; symlink `current-client -> ../web-extension-default`; `CLIENT=base npm run build:client` |
 | `runtime` (`nginx:1.27-alpine`) | COPY `dist/base` → `/usr/share/nginx/html`; COPY `nginx.conf`; COPY `entrypoint.sh`; `LABEL` versi; `EXPOSE 80` |
 
 - `COPY package.json` tiap modul **eksplisit**. Menambah modul baru = menambah baris COPY + jalankan `npm run check:dockerfile` (kalau lupa, guard gagal).
-- Runtime base dapat di-deploy standalone: extension default `web-extension-base` (client `base`).
+- Runtime base dapat di-deploy standalone: extension default `web-extension-default` (client `base`).
 - Hasil: tag `<ver>-builder`, `<sha>-builder`, `<ver>`, `<sha>`.
 
 ### 4.2 Build extension
@@ -427,16 +428,16 @@ TAG=<tag-sebelumnya> docker compose up -d --force-recreate
 | --- | --- |
 | `Dockerfile` (root repo base) | Multi-target base: `builder` / `base-app` / `runtime` |
 | `ci/build-base.sh` | Build + push 2 image base + tag immutable |
-| `web-extension-base/` | Extension default untuk base runtime (client `base`) |
+| `web-extension-default/` | Extension default untuk base runtime (client `base`) |
 | `web-container/docker/entrypoint.sh` | Generate `/config.json` dari env |
 | `web-container/docker/entrypoint.test.sh` | Shell test untuk generasi `/config.json` (env individual + `VITE_CONFIG_JSON`) |
 | `web-container/nginx.conf` | SPA fallback + cache header |
 | `web-container/scripts/check-dockerfile-modules.mjs` | Guard COPY `package.json` modul di Dockerfile root |
 | `web-container/scripts/check-base-version.mjs` | Guard `baseVersion` manifest vs base image |
 | `.dockerignore` (root repo base) | Exclude node_modules/dist/folder extension non-base dari context |
-| `web-extension-<client>/Dockerfile` | Build image client `FROM` base image |
-| `web-extension-<client>/ci/build-client.sh` | Build + push image client |
-| `web-extension-<client>/manifest.json` | `client` + `baseVersion` (pin exact) |
+| `web-extension-client-<x>/Dockerfile` | Build image client `FROM` base image |
+| `web-extension-client-<x>/ci/build-client.sh` | Build + push image client |
+| `web-extension-client-<x>/manifest.json` | `client` + `baseVersion` (pin exact) |
 
 ---
 

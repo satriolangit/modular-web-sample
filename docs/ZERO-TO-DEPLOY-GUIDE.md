@@ -35,7 +35,7 @@
 | Tahap | Hasil | Perintah kunci |
 | --- | --- | --- |
 | 1. Clone | workspace base + extension bersebelahan | `git clone <git-url-arsi-web-base> arsi-web-base` |
-| 2. Extension | repo `web-extension-<client>` dengan `manifest.json` | copy template / clone repo extension |
+| 2. Extension | repo `web-extension-client-<x>` dengan `manifest.json` | copy template / clone repo extension |
 | 3. Compile | `satriolangit/arsi-web-base:<ver>[-builder]` + `satriolangit/arsi-web-<client>:<buildId>` | `ci/build-base.sh`, `ci/build-client.sh` |
 | 4. Deploy | container jalan di VM + HTTPS | `docker compose pull && docker compose up -d` |
 | 5. Verifikasi | `/config.json` sesuai environment | `curl https://app.example.com/config.json` |
@@ -44,8 +44,8 @@ Peran tiap repo:
 
 | Repo | Isi | Kapan diubah |
 | --- | --- | --- |
-| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-base` | shell, UI kit, module bisnis, rilis base |
-| `arsi-extension-<client>` (1 repo per client) | override khas client (`src/`) | slot/route/service/i18n client |
+| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-default` + `web-extension-template` | shell, UI kit, module bisnis, rilis base, template client |
+| `arsi-web-client-<x>` (1 repo per client) | override khas client (`src/`) | slot/route/service/i18n client |
 
 Aturan penting: **extension ditentukan saat build** (1 repo = 1 image client), **module diaktifkan saat deploy** (`VITE_MODULES`), **config penuh bisa di-override saat deploy** (`VITE_CONFIG_JSON`).
 
@@ -66,7 +66,7 @@ Aturan penting: **extension ditentukan saat build** (1 repo = 1 image client), *
 URL repo (placeholder — ganti dengan URL asli):
 
 - base: `<git-url-arsi-web-base>`
-- extension: `<git-url-arsi-extension-<client>>`
+- extension: `<git-url-arsi-web-client-<x>>`
 
 ---
 
@@ -78,7 +78,7 @@ Extension **wajib** berada di dalam folder base repo (symlink `current-client` d
 mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <git-url-arsi-web-base> arsi-web-base
 cd arsi-web-base
-git clone <git-url-arsi-extension-<client>> web-extension-<client>
+git clone <git-url-arsi-web-client-<x>> web-extension-client-<x>
 echo "web-extension-*/" >> .git/info/exclude   # clone extension jangan ikut ter-commit ke base
 ```
 
@@ -87,7 +87,7 @@ Install dependency (urutan: modules → container → extension):
 ```bash
 (cd web-modules && npm ci)
 (cd web-container && npm ci && CLIENT=<client> npm run link:client)
-(cd web-extension-<client> && npm ci)
+(cd web-extension-client-<x> && npm ci)
 ```
 
 Jalankan dev server untuk memastikan workspace sehat:
@@ -107,22 +107,22 @@ Catatan:
 
 ## 4. Tahap 2 — Buat Extension Client
 
-Jika repo extension belum ada, buat dari template:
+Jika repo client belum ada, buat dari template (folder `web-extension-template` di repo base):
 
 ```bash
 cd arsi-web-base
-cp -R web-extension-template web-extension-<client>
-cd web-extension-<client>
+cp -R web-extension-template web-extension-client-<x>
+cd web-extension-client-<x>
 rm -rf node_modules
 ```
 
 Sesuaikan:
 
-1. `package.json` → `"name": "@arsi/extension-<client>"`.
+1. `package.json` → `"name": "@arsi/extension-client-<x>"`.
 2. `manifest.json`:
    ```json
    {
-     "client": "<client>",
+     "client": "client-<x>",
      "baseVersion": "0.1.0",
      "modules": { "user-management": "^0.1.0" },
      "shared": "^0.1.0",
@@ -137,7 +137,7 @@ Verifikasi lokal:
 
 ```bash
 cd ../web-container && CLIENT=<client> npm run link:client && npm run dev:client-a
-cd ../web-extension-<client> && npm run typecheck && npm run test --if-present && npm run lint
+cd ../web-extension-client-<x> && npm run typecheck && npm run test --if-present && npm run lint
 ```
 
 Jika repo extension sudah ada (klien existing), cukup clone (Tahap 1) dan lanjut ke Tahap 3.
@@ -177,7 +177,7 @@ Hasil:
 Dari **root repo extension**:
 
 ```bash
-cd ~/works/arsi/arsi-web-base/web-extension-<client>
+cd ~/works/arsi/arsi-web-base/web-extension-client-<x>
 ORG=satriolangit PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
 ```
 
@@ -197,7 +197,7 @@ cd ~/works/arsi/arsi-web-base
 ORG=satriolangit VERIFY=0 PUSH=0 ./ci/build-base.sh
 
 # client lokal
-cd web-extension-<client>
+cd web-extension-client-<x>
 ORG=satriolangit PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
 
 # jalankan & cek config

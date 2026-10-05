@@ -1,7 +1,7 @@
 # Developer Guide — Building Modules & Extensions
 
 **Version**: 0.8.0
-**Audience**: Developers of `web-modules`, `web-extension-<client>`, and new joiners
+**Audience**: Developers of `web-modules`, `web-extension-client-<x>`, and new joiners
 **Related documents**: `ARCHITECTURE.md` (why & how), `CONTRACT.md` (hard rules — violations = PR rejected), `DEPLOYMENT-GUIDE.en.md` (build/CI), `VM-DEPLOYMENT-GUIDE.en.md` (production deployment on a Linux VM)
 
 > This guide is the fast path to safely add a **new business module** or a **client extension**. All examples are taken from real code in this workspace (`user-management`, `product-management`, `web-extension-client-a`).
@@ -39,7 +39,7 @@ node -v                                  # v22.x
 mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <repo-arsi-web-base> arsi-web-base
 cd arsi-web-base
-git clone <repo-arsi-extension-client-a> web-extension-client-a
+git clone <repo-arsi-web-client-a> web-extension-client-a
 echo "web-extension-*/" >> .git/info/exclude   # keep the extension clone out of the base repo
 
 # 3) Install dependencies (order: modules → container → extension)
@@ -57,8 +57,8 @@ cd web-container && npm run dev:client-a   # http://localhost:5173
 
 | Repo | Contents | What you change here |
 | --- | --- | --- |
-| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-base` | shell/DI/routing, UI kit, business modules, default extension |
-| `arsi-extension-<client>` (1 repo per client) | client-specific overrides (`src/`) | slots, route overrides, service wrappers, client i18n/modal/events |
+| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-default` + `web-extension-template` | shell/DI/routing, UI kit, business modules, default extension, template |
+| `arsi-web-client-<x>` (1 repo per client) | client-specific overrides (`src/`) | slots, route overrides, service wrappers, client i18n/modal/events |
 
 Dependency direction: `Container ← Module ← Extension`; Shared is used by Module & Extension. An extension **must not** touch module internals — only `public.ts` (CONTRACT §1).
 
@@ -84,7 +84,7 @@ OS notes:
 mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <repo-arsi-web-base> arsi-web-base
 cd arsi-web-base
-git clone <repo-arsi-extension-client-a> web-extension-client-a
+git clone <repo-arsi-web-client-a> web-extension-client-a
 ```
 
 Why must the extension live **inside** the base repo folder? Two path contracts depend on it:
@@ -162,10 +162,11 @@ arsi-web-base/                      # base repo
 ├── ci/build-base.sh                # build + push the base image
 ├── docs/                           # ARCHITECTURE.md, CONTRACT.md, this guide
 ├── web-container/                  # shell: DI, routing, layout, config, registries
-│   └── current-client -> ../web-extension-<client>   (symlink)
+│   └── current-client -> ../web-extension-client-<x>   (symlink)
 ├── web-modules/                    # shared/ (UI kit) + modules/<name>/ (business features)
-├── web-extension-base/             # default extension (client "base") for the base image
-└── web-extension-<client>/         # extension repo (separate clone, inside the base repo)
+├── web-extension-default/          # default extension (client "base") for the base image
+├── web-extension-template/         # template for new client repos
+└── web-extension-client-<x>/       # client repo checkout (separate clone, inside the base repo)
 ```
 
 The extension folder **must sit side by side** with `web-container` and `web-modules` — the `current-client` symlink and the extension aliases (`../web-container`) depend on it. On a laptop, clone the extension repo **inside** the base repo folder (full steps: §0.3).
@@ -199,13 +200,13 @@ Run the dev server: `cd web-container && npm run dev:client-a` → http://localh
 | client-a dev server | `cd web-container && npm run dev:client-a` (http://localhost:5173) |
 | Switch active client | `cd web-container && CLIENT=<client> npm run link:client` (or `npm run link:client-a`); restart the dev server |
 | Build client | `cd web-container && CLIENT=<client> npm run build:client` → `dist/<client>/` (client-a: `npm run build:client-a`) |
-| Build base (default image) | `cd web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client` → `dist/base/` |
+| Build base (default image) | `cd web-container && npm run link:base && CLIENT=base npm run build:client` → `dist/base/` |
 | Tests | `npm test` in any repo (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` (container & extension) |
 | Module COPY guard | `cd web-container && npm run check:dockerfile` |
 | Local base image build | `ORG=<dockerhub-org> VERIFY=0 PUSH=0 ./ci/build-base.sh` (from the base repo root; §10.2) |
-| Local client image build | `cd web-extension-<client> && ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh` (§10.3) |
+| Local client image build | `cd web-extension-client-<x> && ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh` (§10.3) |
 | Adopt a new base version | bump `manifest.json:baseVersion` via PR (§4.11) |
 
 ### 1.5 Document map
@@ -686,7 +687,7 @@ Full mocking patterns are in section 6.
 ```bash
 cd web-modules && npm run typecheck && npm test && npm run lint
 cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
-cd ../web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client   # verify the base image
+cd ../web-container && npm run link:base && CLIENT=base npm run build:client   # verify the base image
 cd ../web-container && npm run link:client-a && npm run dev:client-a
 # open http://localhost:5173 → the Orders menu appears, the page renders
 ```
@@ -828,7 +829,7 @@ For any `public.ts` change (breaking or not), **always** run the extension typec
 
 ## 4. Creating an Extension (module-extension)
 
-An extension = a `web-extension-<client>` repo; it has only **one** entry: the default export `init(deps)` in `src/index.tsx`. The container loads it through the `@arsi/extension` alias (the `current-client` symlink).
+An extension = a `web-extension-client-<x>` repo; it has only **one** entry: the default export `init(deps)` in `src/index.tsx`. The container loads it through the `@arsi/extension` alias (the `current-client` symlink).
 
 ### 4.1 Structure & `manifest.json`
 
@@ -993,8 +994,8 @@ expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.a
 
 ### 4.9 New client from the template
 
-1. Copy `web-extension-template` into a new `web-extension-<client>` repo (e.g. `web-extension-client-x`) and make it its own Git repo.
-2. Adjust `package.json` (`name`) and fill in `manifest.json`: `client` = `<client>`, `baseVersion` = the current base tag (exact, e.g. `0.1.0`), plus `modules`/`shared`/`overrides` as needed.
+1. Copy `web-extension-template` from the base repo into a new `arsi-web-client-<x>` repo (checkout: `web-extension-client-<x>`) and make it its own Git repo.
+2. Adjust `package.json` (`name` = `@arsi/extension-client-<x>`) and fill in `manifest.json`: `client` = `client-<x>` (e.g. `client-bca`), `baseVersion` = the current base tag (exact, e.g. `0.1.0`), plus `modules`/`shared`/`overrides` as needed.
 3. Build & push the client image — the base is **not** rebuilt; the script uses the base image `FROM` the registry:
 
 ```bash
@@ -1293,7 +1294,7 @@ pages/OrderListPage.tsx
 i18n/{en,id}.json
 ```
 
-**Extension** (`web-extension-<client>/`):
+**Extension** (`web-extension-client-<x>/`):
 
 ```
 package.json + manifest.json + tsconfig.json + aliases.cjs + vitest.config.ts

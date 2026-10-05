@@ -125,25 +125,30 @@ Don't over-engineer at the start. But also don't accrue architecture debt that i
 
 ### 3.1 Repo Structure
 
+Production: 1 base repo + 1 repo per client.
+
 ```
-workspace/
-├── web-container/              # Application shell
-├── web-modules/                # Shared + business modules
-├── web-extension-client-a/     # Client A extension
-├── web-extension-client-b/     # Client B extension
-└── web-extension-template/     # Template for new clients
+arsi-web-base/                          # base repo
+├── web-container/                      # Application shell
+├── web-modules/                        # Shared + business modules
+├── web-extension-default/              # Default extension (client "base") for the base image
+└── web-extension-template/             # Template for new clients
+
+arsi-web-client-<x>/                    # client repo (1 per client)
+└── web-extension-client-<x>/           # client repo checkout — placed inside the base repo during dev
 ```
 
-**Must be side by side** while using path mapping.
+**Must be side by side** while using path mapping: the client folder must be a sibling of `web-container`/`web-modules` (see §19.1).
 
 ### 3.2 Ownership Matrix
 
-| Repo                     | Owner                    | Contributors                     |
-| ------------------------ | ------------------------ | -------------------------------- |
-| `web-container`          | Platform team / lead dev | Internal developers              |
-| `web-modules`            | Platform team / lead dev | Internal developers              |
-| `web-extension-<client>` | Client developer         | Can view base, but cannot modify |
-| `web-extension-template` | Platform team            | —                                |
+| Repo                                                        | Owner                    | Contributors                     |
+| ----------------------------------------------------------- | ------------------------ | -------------------------------- |
+| `web-container` (repo `arsi-web-base`)                      | Platform team / lead dev | Internal developers              |
+| `web-modules` (repo `arsi-web-base`)                        | Platform team / lead dev | Internal developers              |
+| `web-extension-default` (repo `arsi-web-base`)              | Platform team / lead dev | Internal developers              |
+| `web-extension-template` (repo `arsi-web-base`)             | Platform team            | —                                |
+| `web-extension-client-<x>` (repo `arsi-web-client-<x>`)     | Client developer         | Can view base, but cannot modify |
 
 ### 3.3 Repo Contents
 
@@ -170,7 +175,12 @@ workspace/
 - `modules/<name>/` — business features
 - Each module has `public.ts` as its contract
 
-**`web-extension-<client>`:**
+**`web-extension-default`:**
+
+- Default (no-op) extension used by the standalone base image (`client: "base"`)
+- Default build target (`CLIENT=base npm run build:client` → `dist/base/`)
+
+**`web-extension-client-<x>`:**
 
 - `src/index.ts` — entry point `init(deps)`
 - `src/components/` — client-specific components
@@ -180,7 +190,7 @@ workspace/
 **`web-extension-template`:**
 
 - Same as an extension, but empty
-- To be cloned when creating a new client
+- Lives in the base repo; copied when creating a new client repo (`arsi-web-client-<x>`)
 
 ---
 
@@ -190,7 +200,7 @@ workspace/
 
 ```
 ┌────────────────────────────────────────────┐
-│  web-extension-<client>                    │
+│  web-extension-client-<x>                    │
 │  - UI override (slot)                      │
 │  - route override                          │
 │  - service wrapper                         │
@@ -1001,7 +1011,7 @@ events.emit("client-a.audit.requested", { userId });
 **Local dev** — the container has a symlink:
 
 ```
-web-container/current-client → ../web-extension-<client>
+web-container/current-client → ../web-extension-client-<x>
 ```
 
 Switch client:
@@ -1011,7 +1021,7 @@ CLIENT=client-a npm run link:client   # symlink -> ../web-extension-client-a
 CLIENT=client-b npm run link:client   # symlink -> ../web-extension-client-b
 ```
 
-**In the builder image** — the extension repo is always COPYed to `/app/extension` (not `web-extension-<client>`), then `web-container/current-client → ../extension` is created at build time. That keeps the `@arsi/extension` alias and all other path mappings valid with no changes.
+**In the builder image** — the extension repo is always COPYed to `/app/extension` (not `web-extension-client-<x>`), then `web-container/current-client → ../extension` is created at build time. That keeps the `@arsi/extension` alias and all other path mappings valid with no changes.
 
 ### 15.5 Rules
 
@@ -1034,11 +1044,11 @@ npm run link:client-a        # symlink current-client -> ../web-extension-client
 npm run build:client-a       # output: dist/client-a/
 ```
 
-Default base (extension `web-extension-base`, client `base`):
+Default base (extension `web-extension-default`, client `base`):
 
 ```bash
 cd web-container
-CLIENT=base npm run link:client
+npm run link:base
 CLIENT=base npm run build:client
 ```
 
@@ -1048,8 +1058,8 @@ The base is built **once** from the base repo root: one multi-target `Dockerfile
 
 | Image | Built by | Contents |
 | ----- | -------- | -------- |
-| `<org>/arsi-web-base:<ver>-builder` | `ci/build-base.sh` (`builder` stage, `node:22-alpine`) | base source (`web-container`, `web-modules`, `web-extension-base`) + `node_modules` + `/app/BASE_VERSION` |
-| `<org>/arsi-web-base:<ver>` | `ci/build-base.sh` (`runtime` stage, `nginx:1.27-alpine`) | default SPA (`web-extension-base`) + `nginx.conf` + `entrypoint.sh` |
+| `<org>/arsi-web-base:<ver>-builder` | `ci/build-base.sh` (`builder` stage, `node:22-alpine`) | base source (`web-container`, `web-modules`, `web-extension-default`) + `node_modules` + `/app/BASE_VERSION` |
+| `<org>/arsi-web-base:<ver>` | `ci/build-base.sh` (`runtime` stage, `nginx:1.27-alpine`) | default SPA (`web-extension-default`) + `nginx.conf` + `entrypoint.sh` |
 | `<org>/arsi-web-<client>:<buildId>` | `ci/build-client.sh` (extension repo) | nginx + client dist (1 image), `ENV VITE_CLIENT=<client>` |
 
 ```bash
@@ -1121,7 +1131,7 @@ One client image, many environments. Config is injected when the container start
 
 There is no platform-specific YAML; any pipeline (Azure DevOps, GitHub Actions, Jenkins) just calls the shell scripts in each repo. Details: `DEPLOYMENT-GUIDE.en.md` §8.
 
-**Base repo** (`web-container` + `web-modules` + `web-extension-base`):
+**Base repo** (`web-container` + `web-modules` + `web-extension-default`):
 
 | Step | Command |
 | ---- | ------- |
@@ -1130,7 +1140,7 @@ There is no platform-specific YAML; any pipeline (Azure DevOps, GitHub Actions, 
 | Registry login | `docker login` (token from CI secret) |
 | Build + push 2 base images | `ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh` |
 
-**Extension repo** (`web-extension-<client>`):
+**Extension repo** (`web-extension-client-<x>`):
 
 | Step | Command |
 | ---- | ------- |
@@ -1148,9 +1158,9 @@ There is no platform-specific YAML; any pipeline (Azure DevOps, GitHub Actions, 
 
 | Repo                                                        | Pipeline                                                        |
 | ----------------------------------------------------------- | --------------------------------------------------------------- |
-| `web-container` + `web-modules` + `web-extension-base` (base repo) | Build + test base, publish 2 base images (builder + runtime)     |
-| `web-extension-<client>`                                    | Build + test extension in the builder image, build & push client image |
-| `web-extension-template`                                    | No pipeline                                                     |
+| `arsi-web-base` (`web-container` + `web-modules` + `web-extension-default` + `web-extension-template`) | Build + test base, publish 2 base images (builder + runtime)     |
+| `arsi-web-client-<x>` (`web-extension-client-<x>`)            | Build + test extension in the builder image, build & push client image |
+| `web-extension-template` (inside the base repo)             | No pipeline                                                     |
 
 ### 17.3 Artifacts
 
@@ -1260,8 +1270,8 @@ Generic scripts: `link:client` and `build:client` (require the `CLIENT` env); th
 
 ### 19.4 Add a New Client
 
-1. Copy `web-extension-template` into a new `web-extension-<client>` repo (e.g. `web-extension-client-x`), then make it its own Git repo.
-2. Fill in `manifest.json`: `client` = `<client>`, `baseVersion` = the current base tag (exact, e.g. `0.1.0`).
+1. Copy `web-extension-template` from the base repo into a new `arsi-web-client-<x>` repo (checkout: `web-extension-client-<x>`), then make it its own Git repo.
+2. Fill in `manifest.json`: `client` = `client-<x>` (e.g. `client-bca`), `baseVersion` = the current base tag (exact, e.g. `0.1.0`).
 3. Push the repo and connect it to CI; the pipeline calls `ci/build-client.sh` to build & push the client image (`FROM` the base image). **The base repo is not rebuilt** and other clients are unaffected.
 4. Optional local dev:
 
@@ -1469,7 +1479,7 @@ web-modules/
         └── i18n/
 ```
 
-### A.3 `web-extension-<client>`
+### A.3 `web-extension-client-<x>`
 
 ```
 web-extension-client-a/

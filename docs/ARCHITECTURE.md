@@ -125,25 +125,30 @@ Jangan over-engineer di awal. Tapi jangan juga utang arsitektur yang susah dibay
 
 ### 3.1 Repo Structure
 
+Produksi: 1 repo base + 1 repo per client.
+
 ```
-workspace/
-├── web-container/              # Shell aplikasi
-├── web-modules/                # Shared + modul bisnis
-├── web-extension-client-a/     # Extension client A
-├── web-extension-client-b/     # Extension client B
-└── web-extension-template/     # Template untuk client baru
+arsi-web-base/                          # repo base
+├── web-container/                      # Shell aplikasi
+├── web-modules/                        # Shared + modul bisnis
+├── web-extension-default/              # Extension default (client "base") untuk image base
+└── web-extension-template/             # Template untuk client baru
+
+arsi-web-client-<x>/                    # repo client (1 per client)
+└── web-extension-client-<x>/           # checkout repo client — diletakkan di dalam base repo saat dev
 ```
 
-**Wajib bersebelahan** selama pakai path mapping.
+**Wajib bersebelahan** selama memakai path mapping: folder client harus bersaudara dengan `web-container`/`web-modules` (lihat §19.1).
 
 ### 3.2 Ownership Matrix
 
-| Repo                     | Owner                    | Kontributor                      |
-| ------------------------ | ------------------------ | -------------------------------- |
-| `web-container`          | Platform team / lead dev | Developer internal               |
-| `web-modules`            | Platform team / lead dev | Developer internal               |
-| `web-extension-<client>` | Developer client         | Bisa lihat base, tapi tidak ubah |
-| `web-extension-template` | Platform team            | —                                |
+| Repo                                                        | Owner                    | Kontributor                      |
+| ----------------------------------------------------------- | ------------------------ | -------------------------------- |
+| `web-container` (repo `arsi-web-base`)                      | Platform team / lead dev | Developer internal               |
+| `web-modules` (repo `arsi-web-base`)                        | Platform team / lead dev | Developer internal               |
+| `web-extension-default` (repo `arsi-web-base`)              | Platform team / lead dev | Developer internal               |
+| `web-extension-template` (repo `arsi-web-base`)             | Platform team            | —                                |
+| `web-extension-client-<x>` (repo `arsi-web-client-<x>`)     | Developer client         | Bisa lihat base, tapi tidak ubah |
 
 ### 3.3 Isi Repo
 
@@ -170,7 +175,12 @@ workspace/
 - `modules/<name>/` — fitur bisnis
 - Setiap modul punya `public.ts` sebagai kontrak
 
-**`web-extension-<client>`:**
+**`web-extension-default`:**
+
+- Extension default (no-op) yang dipakai image base standalone (`client: "base"`)
+- Target build default (`CLIENT=base npm run build:client` → `dist/base/`)
+
+**`web-extension-client-<x>`:**
 
 - `src/index.ts` — entry point `init(deps)`
 - `src/components/` — komponen client-specific
@@ -180,7 +190,7 @@ workspace/
 **`web-extension-template`:**
 
 - Sama dengan extension, tapi kosong
-- Untuk di-clone saat bikin client baru
+- Berada di repo base; di-copy saat membuat repo client baru (`arsi-web-client-<x>`)
 
 ---
 
@@ -190,7 +200,7 @@ workspace/
 
 ```
 ┌────────────────────────────────────────────┐
-│  web-extension-<client>                    │
+│  web-extension-client-<x>                    │
 │  - override UI (slot)                      │
 │  - override route                          │
 │  - service wrapper                         │
@@ -1001,7 +1011,7 @@ events.emit("client-a.audit.requested", { userId });
 **Dev lokal** — container punya symlink:
 
 ```
-web-container/current-client → ../web-extension-<client>
+web-container/current-client → ../web-extension-client-<x>
 ```
 
 Ganti client:
@@ -1011,7 +1021,7 @@ CLIENT=client-a npm run link:client   # symlink -> ../web-extension-client-a
 CLIENT=client-b npm run link:client   # symlink -> ../web-extension-client-b
 ```
 
-**Di image builder** — repo extension selalu di-COPY ke `/app/extension` (bukan `web-extension-<client>`), lalu `web-container/current-client → ../extension` dibuat saat build. Karena itu alias `@arsi/extension` dan path mapping lain tetap valid tanpa perubahan.
+**Di image builder** — repo extension selalu di-COPY ke `/app/extension` (bukan `web-extension-client-<x>`), lalu `web-container/current-client → ../extension` dibuat saat build. Karena itu alias `@arsi/extension` dan path mapping lain tetap valid tanpa perubahan.
 
 ### 15.5 Aturan
 
@@ -1034,11 +1044,11 @@ npm run link:client-a        # symlink current-client -> ../web-extension-client
 npm run build:client-a       # output: dist/client-a/
 ```
 
-Base default (extension `web-extension-base`, client `base`):
+Base default (extension `web-extension-default`, client `base`):
 
 ```bash
 cd web-container
-CLIENT=base npm run link:client
+npm run link:base
 CLIENT=base npm run build:client
 ```
 
@@ -1048,8 +1058,8 @@ Base dibangun **sekali** dari root repo base: satu `Dockerfile` multi-target men
 
 | Image | Dibangun oleh | Isi |
 | ----- | ------------- | --- |
-| `<org>/arsi-web-base:<ver>-builder` | `ci/build-base.sh` (stage `builder`, `node:22-alpine`) | source base (`web-container`, `web-modules`, `web-extension-base`) + `node_modules` + `/app/BASE_VERSION` |
-| `<org>/arsi-web-base:<ver>` | `ci/build-base.sh` (stage `runtime`, `nginx:1.27-alpine`) | SPA default (`web-extension-base`) + `nginx.conf` + `entrypoint.sh` |
+| `<org>/arsi-web-base:<ver>-builder` | `ci/build-base.sh` (stage `builder`, `node:22-alpine`) | source base (`web-container`, `web-modules`, `web-extension-default`) + `node_modules` + `/app/BASE_VERSION` |
+| `<org>/arsi-web-base:<ver>` | `ci/build-base.sh` (stage `runtime`, `nginx:1.27-alpine`) | SPA default (`web-extension-default`) + `nginx.conf` + `entrypoint.sh` |
 | `<org>/arsi-web-<client>:<buildId>` | `ci/build-client.sh` (repo extension) | nginx + dist client (1 image), `ENV VITE_CLIENT=<client>` |
 
 ```bash
@@ -1121,7 +1131,7 @@ Satu image client, banyak environment. Config di-inject saat container start (ta
 
 Tidak ada YAML platform spesifik; pipeline apa pun (Azure DevOps, GitHub Actions, Jenkins) cukup memanggil skrip shell di tiap repo. Detail: `DEPLOYMENT-GUIDE.md` §8.
 
-**Repo base** (`web-container` + `web-modules` + `web-extension-base`):
+**Repo base** (`web-container` + `web-modules` + `web-extension-default`):
 
 | Langkah | Perintah |
 | ------- | -------- |
@@ -1130,7 +1140,7 @@ Tidak ada YAML platform spesifik; pipeline apa pun (Azure DevOps, GitHub Actions
 | Login registry | `docker login` (token dari secret CI) |
 | Build + push 2 image base | `ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh` |
 
-**Repo extension** (`web-extension-<client>`):
+**Repo extension** (`web-extension-client-<x>`):
 
 | Langkah | Perintah |
 | ------- | -------- |
@@ -1148,9 +1158,9 @@ Tidak ada YAML platform spesifik; pipeline apa pun (Azure DevOps, GitHub Actions
 
 | Repo                                                       | Pipeline                                                     |
 | ---------------------------------------------------------- | ------------------------------------------------------------ |
-| `web-container` + `web-modules` + `web-extension-base` (repo base) | Build + test base, publish 2 image base (builder + runtime)  |
-| `web-extension-<client>`                                   | Build + test extension di builder image, build & push image client |
-| `web-extension-template`                                   | Tidak ada pipeline                                           |
+| `arsi-web-base` (`web-container` + `web-modules` + `web-extension-default` + `web-extension-template`) | Build + test base, publish 2 image base (builder + runtime)  |
+| `arsi-web-client-<x>` (`web-extension-client-<x>`)          | Build + test extension di builder image, build & push image client |
+| `web-extension-template` (di dalam repo base)               | Tidak ada pipeline                                           |
 
 ### 17.3 Artifact
 
@@ -1260,8 +1270,8 @@ Script generik: `link:client` dan `build:client` (butuh env `CLIENT`); **tidak a
 
 ### 19.4 Tambah Client Baru
 
-1. Salin `web-extension-template` menjadi repo baru `web-extension-<client>` (mis. `web-extension-client-x`), lalu jadikan repo Git sendiri.
-2. Isi `manifest.json`: `client` = `<client>`, `baseVersion` = tag base saat ini (exact, mis. `0.1.0`).
+1. Salin `web-extension-template` dari repo base menjadi repo baru `arsi-web-client-<x>` (checkout: `web-extension-client-<x>`), lalu jadikan repo Git sendiri.
+2. Isi `manifest.json`: `client` = `client-<x>` (mis. `client-bca`), `baseVersion` = tag base saat ini (exact, mis. `0.1.0`).
 3. Push repo dan connect ke CI; pipeline memanggil `ci/build-client.sh` untuk build & push image client (`FROM` base image). **Repo base tidak dibangun ulang** dan client lain tidak terpengaruh.
 4. Dev lokal opsional:
 
@@ -1469,7 +1479,7 @@ web-modules/
         └── i18n/
 ```
 
-### A.3 `web-extension-<client>`
+### A.3 `web-extension-client-<x>`
 
 ```
 web-extension-client-a/

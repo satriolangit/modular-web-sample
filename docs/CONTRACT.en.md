@@ -2,7 +2,7 @@
 
 **Version**: 0.1.0
 **Location**: `web-container/CONTRACT.md`
-**Audience**: Developer `web-container`, `web-modules`, `web-extension-<client>`
+**Audience**: Developer `web-container`, `web-modules`, `web-extension-client-<x>`
 
 > This document is a **hard contract**. All code in the three repos must follow the rules here. Contract violation = PR rejected.
 
@@ -42,7 +42,7 @@
 | Container | `web-container`              | Shell: auth, routing, layout, DI, config, API client, event bus |
 | Shared    | `web-modules/shared`         | UI kit (shadcn-ui), hooks, utils                                |
 | Module    | `web-modules/modules/<name>` | Business features                                               |
-| Extension | `web-extension-<client>`     | Per-client override                                             |
+| Extension | `web-extension-client-<x>`     | Per-client override                                             |
 
 ### 1.2 Dependency Matrix
 
@@ -104,7 +104,7 @@ Importing from files outside the public API is a **contract violation**.
 | Container/shell only | `web-container` | radix dialog, sonner |
 | UI kit (modules + extensions) | `web-modules/shared` | radix, lucide, CVA |
 | Module features | `web-modules` workspace | `cd web-modules && npm install <pkg> -w @arsi/module-<name>` |
-| Client-specific | `web-extension-<client>` | axios, react-router-dom |
+| Client-specific | `web-extension-client-<x>` | axios, react-router-dom |
 
 **Hard rules:**
 
@@ -114,7 +114,7 @@ Importing from files outside the public API is a **contract violation**.
 - Forbidden to add libraries that duplicate container capabilities: toast, modal, notifications, i18n, React Query, HTTP client, event bus.
 - Modules/extensions **must not** have Tailwind/PostCSS config; the Tailwind plugin lives only in `shared/tailwind.preset.cjs`.
 - Global CSS from libraries **must not** be imported from modules; import only in `web-container/src/styles/globals.css`.
-- The base `Dockerfile` lives at the **root of the base repo** (`arsi-web-base` = `web-container` + `web-modules` + `web-extension-base`); a new workspace package (module) → add `COPY <package.json>` in the root Dockerfile, run `npm run check:dockerfile` in `web-container` (the guard validates the root Dockerfile, including `web-extension-base/package.json`); lockfile **must** be committed.
+- The base `Dockerfile` lives at the **root of the base repo** (`arsi-web-base` = `web-container` + `web-modules` + `web-extension-default` + `web-extension-template`); a new workspace package (module) → add `COPY <package.json>` in the root Dockerfile, run `npm run check:dockerfile` in `web-container` (the guard validates the root Dockerfile, including `web-extension-default/package.json`); lockfile **must** be committed.
 - Extension repos **do not** add module `COPY` lines — the build consumes the base builder image (`/app/extension`, symlink `current-client -> ../extension`); extensions **must** pin `manifest.json.baseVersion` exactly to the base version (checked by `npm run check:base` during the client image build).
 
 **Mandatory verification when adding a dependency:**
@@ -1070,7 +1070,10 @@ Constants (`containerEvents`) and payload type (`ContainerSearchPayload`) are ex
 | Service name           | `<module>` or `<client>.<service>`   | `user`, `client-a.audit`                  |
 | Query key root         | `[<module>, <entity>]`               | `['user-management', 'user']`             |
 | Store persist key      | `<layer>:<name>`                     | `module:user-management`                  |
-| Docker image           | `<org>/arsi-web-base` (base), `<org>/arsi-web-<client>` (client) | `<org>/arsi-web-base`, `<org>/arsi-web-client-a` |
+| Base repo              | `arsi-web-base`                      | `arsi-web-base`                           |
+| Client repo            | `arsi-web-client-<x>`                | `arsi-web-client-bca`                     |
+| Client id (`manifest`) | `client-<x>`                         | `client-bca`                              |
+| Docker image           | `<org>/arsi-web-base` (base), `<org>/arsi-web-<client>` (client) | `<org>/arsi-web-base`, `<org>/arsi-web-client-bca` |
 | Docker image tag       | `<ver>` (runtime), `<ver>-builder` (builder) | `0.1.0`, `0.1.0-builder`                  |
 
 ---
@@ -1221,11 +1224,12 @@ Before merging a PR:
 
 ---
 
-**Document version**: 0.7.1
+**Document version**: 0.7.2
 **Last updated**: 2026-10-03
 
 **Changelog:**
 
+- **0.7.2** — Repo structure: default extension `web-extension-base` → `web-extension-default` (package `@arsi/extension-default`); client repo `arsi-web-client-<x>` (checkout `web-extension-client-<x>`, client id `client-<x>`); `web-extension-template` is part of the base repo; `npm run link:base` script for the base. §1.6/§15 rules updated.
 - **0.7.1** — Full `config.json` override via the `VITE_CONFIG_JSON` runtime env (base entrypoint, fail-fast validation, individual envs ignored when set); §14.1/§14.3 rules updated.
 - **0.7.0** — Base image & extension deployment: Dockerfile moved to the base repo root (`arsi-web-base`) with a multi-target base image (builder + runtime, Node 22 builder); extensions `FROM` the base image with no module `COPY` lines; `manifest.json.baseVersion` exact pin + `check:base` guard during the extension build; Docker rules in §1.6/§15/§16 updated.
 - **0.6.0** — Generated Loader Map (§1.7): map entry generated from `package.json` name, wildcard alias (§1.5), sync test, pre-hooks; adding a module doesn't touch `discover.ts`/aliases/tsconfig.

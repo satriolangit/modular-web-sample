@@ -1,7 +1,7 @@
 # Panduan Developer — Membuat Module & Extension
 
 **Version**: 0.8.0
-**Audience**: Developer `web-modules`, `web-extension-<client>`, dan new joiner
+**Audience**: Developer `web-modules`, `web-extension-client-<x>`, dan new joiner
 **Dokumen terkait**: `ARCHITECTURE.md` (kenapa & bagaimana), `CONTRACT.md` (aturan keras — pelanggaran = PR ditolak), `DEPLOYMENT-GUIDE.md` (build/CI), `VM-DEPLOYMENT-GUIDE.en.md` (deploy produksi di VM Linux)
 
 > Panduan ini adalah jalur cepat untuk menambah **module bisnis baru** atau **extension client** dengan aman. Semua contoh diambil dari kode nyata di workspace ini (`user-management`, `product-management`, `web-extension-client-a`).
@@ -39,7 +39,7 @@ node -v                                  # v22.x
 mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <repo-arsi-web-base> arsi-web-base
 cd arsi-web-base
-git clone <repo-arsi-extension-client-a> web-extension-client-a
+git clone <repo-arsi-web-client-a> web-extension-client-a
 echo "web-extension-*/" >> .git/info/exclude   # clone extension jangan ikut ter-commit ke base
 
 # 3) Install dependency (urutan: modules → container → extension)
@@ -57,8 +57,8 @@ cd web-container && npm run dev:client-a   # http://localhost:5173
 
 | Repo | Isi | Anda mengubah apa |
 | --- | --- | --- |
-| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-base` | shell/DI/routing, UI kit, module bisnis, extension default |
-| `arsi-extension-<client>` (1 repo per client) | override khas client (`src/`) | slot, route override, service wrapper, i18n/modal/event khas client |
+| `arsi-web-base` (1 repo) | `web-container` + `web-modules` + `web-extension-default` + `web-extension-template` | shell/DI/routing, UI kit, module bisnis, extension default, template |
+| `arsi-web-client-<x>` (1 repo per client) | override khas client (`src/`) | slot, route override, service wrapper, i18n/modal/event khas client |
 
 Arah dependensi: `Container ← Module ← Extension`, Shared dipakai Module & Extension. Extension **tidak boleh** menyentuh internal module — hanya `public.ts` (CONTRACT §1).
 
@@ -84,7 +84,7 @@ Catatan OS:
 mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <repo-arsi-web-base> arsi-web-base
 cd arsi-web-base
-git clone <repo-arsi-extension-client-a> web-extension-client-a
+git clone <repo-arsi-web-client-a> web-extension-client-a
 ```
 
 Kenapa extension harus **di dalam** folder base repo? Dua kontrak path bergantung padanya:
@@ -162,10 +162,11 @@ arsi-web-base/                      # repo base
 ├── ci/build-base.sh                # build + push image base
 ├── docs/                           # ARCHITECTURE.md, CONTRACT.md, panduan ini
 ├── web-container/                  # shell: DI, routing, layout, config, registry
-│   └── current-client -> ../web-extension-<client>   (symlink)
+│   └── current-client -> ../web-extension-client-<x>   (symlink)
 ├── web-modules/                    # shared/ (UI kit) + modules/<name>/ (fitur bisnis)
-├── web-extension-base/             # extension default (client "base") untuk image base
-└── web-extension-<client>/         # repo extension (clone terpisah, di dalam base repo)
+├── web-extension-default/          # extension default (client "base") untuk image base
+├── web-extension-template/         # template repo client baru
+└── web-extension-client-<x>/       # checkout repo client (clone terpisah, di dalam base repo)
 ```
 
 Folder extension **wajib bersebelahan** dengan `web-container` dan `web-modules` — symlink `current-client` dan alias extension (`../web-container`) bergantung padanya. Di laptop, clone repo extension **di dalam** folder base repo (langkah lengkap: §0.3).
@@ -199,13 +200,13 @@ Jalankan dev server: `cd web-container && npm run dev:client-a` → http://local
 | Dev server client-a | `cd web-container && npm run dev:client-a` (http://localhost:5173) |
 | Ganti client aktif | `cd web-container && CLIENT=<client> npm run link:client` (atau `npm run link:client-a`); restart dev server |
 | Build client | `cd web-container && CLIENT=<client> npm run build:client` → `dist/<client>/` (client-a: `npm run build:client-a`) |
-| Build base (image default) | `cd web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client` → `dist/base/` |
+| Build base (image default) | `cd web-container && npm run link:base && CLIENT=base npm run build:client` → `dist/base/` |
 | Test | `npm test` di repo mana pun (`web-modules`, `web-container`, extension) |
 | Typecheck | `npm run typecheck` |
 | Lint | `npm run lint` (container & extension) |
 | Guard COPY module | `cd web-container && npm run check:dockerfile` |
 | Build image base lokal | `ORG=<dockerhub-org> VERIFY=0 PUSH=0 ./ci/build-base.sh` (dari root repo base; §10.2) |
-| Build image client lokal | `cd web-extension-<client> && ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh` (§10.3) |
+| Build image client lokal | `cd web-extension-client-<x> && ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh` (§10.3) |
 | Adopsi base versi baru | bump `manifest.json:baseVersion` via PR (§4.11) |
 
 ### 1.5 Peta dokumen
@@ -686,7 +687,7 @@ Pola mocking lengkap di [bagian 6](#6-testing-playbook).
 ```bash
 cd web-modules && npm run typecheck && npm test && npm run lint
 cd ../web-container && npm run typecheck && npm test && npm run check:dockerfile && npm run build:client-a
-cd ../web-container && CLIENT=base npm run link:client && CLIENT=base npm run build:client   # verifikasi image base
+cd ../web-container && npm run link:base && CLIENT=base npm run build:client   # verifikasi image base
 cd ../web-container && npm run link:client-a && npm run dev:client-a
 # buka http://localhost:5173 → menu Orders muncul, halaman render
 ```
@@ -828,7 +829,7 @@ Untuk perubahan `public.ts` (breaking atau tidak), **selalu** jalankan typecheck
 
 ## 4. Membuat Extension (module-extension)
 
-Extension = repo `web-extension-<client>`; hanya punya **satu** entry: default export `init(deps)` di `src/index.tsx`. Container memuatnya lewat alias `@arsi/extension` (symlink `current-client`).
+Extension = repo `web-extension-client-<x>`; hanya punya **satu** entry: default export `init(deps)` di `src/index.tsx`. Container memuatnya lewat alias `@arsi/extension` (symlink `current-client`).
 
 ### 4.1 Struktur & `manifest.json`
 
@@ -993,8 +994,8 @@ expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.a
 
 ### 4.9 Client baru dari template
 
-1. Salin `web-extension-template` menjadi repo baru `web-extension-<client>` (mis. `web-extension-client-x`), lalu jadikan repo Git sendiri.
-2. Sesuaikan `package.json` (`name`) dan isi `manifest.json`: `client` = `<client>`, `baseVersion` = tag base saat ini (exact, mis. `0.1.0`), plus `modules`/`shared`/`overrides` sesuai kebutuhan.
+1. Salin `web-extension-template` dari repo base menjadi repo baru `arsi-web-client-<x>` (checkout: `web-extension-client-<x>`), lalu jadikan repo Git sendiri.
+2. Sesuaikan `package.json` (`name` = `@arsi/extension-client-<x>`) dan isi `manifest.json`: `client` = `client-<x>` (mis. `client-bca`), `baseVersion` = tag base saat ini (exact, mis. `0.1.0`), plus `modules`/`shared`/`overrides` sesuai kebutuhan.
 3. Build & push image client — base **tidak** dibangun ulang; script memakai base image `FROM` registry:
 
 ```bash
@@ -1293,7 +1294,7 @@ pages/OrderListPage.tsx
 i18n/{en,id}.json
 ```
 
-**Extension** (`web-extension-<client>/`):
+**Extension** (`web-extension-client-<x>/`):
 
 ```
 package.json + manifest.json + tsconfig.json + aliases.cjs + vitest.config.ts
