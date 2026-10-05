@@ -2,7 +2,7 @@
 
 **Version**: 0.2.0
 **Audience**: DevOps / platform engineers
-**Related**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`
+**Related**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; end-to-end guide: `ZERO-TO-DEPLOY-GUIDE.en.md`
 **Current deployment target**: **Docker** — the base is built once into `arsi-web-base` images, then each extension builds one client image `FROM` that base image. Config is injected at container start.
 
 > Indonesian version: `DEPLOYMENT-GUIDE.md`.

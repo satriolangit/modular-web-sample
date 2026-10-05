@@ -146,6 +146,7 @@ npm run dev:client-a          # http://localhost:5173
 | Write tests | §6 |
 | Build images & smoke test locally | §10 |
 | Deploy to a server | `DEPLOYMENT-GUIDE.en.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
+| Deploy end-to-end (clone → extension → compile → deploy) | `ZERO-TO-DEPLOY-GUIDE.en.md` |
 
 ---
 

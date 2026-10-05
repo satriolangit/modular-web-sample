@@ -2,7 +2,7 @@
 
 **Version**: 0.2.0
 **Audience**: DevOps / platform engineer
-**Terkait**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`
+**Terkait**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; panduan end-to-end: `ZERO-TO-DEPLOY-GUIDE.md`
 **Target deployment saat ini**: **Docker** — base dibangun sekali menjadi image `arsi-web-base`, lalu tiap extension membangun satu image client `FROM` base image tersebut. Config di-inject saat container start.
 
 > English version: `DEPLOYMENT-GUIDE.en.md`.

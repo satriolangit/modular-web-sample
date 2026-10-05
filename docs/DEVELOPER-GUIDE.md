@@ -146,6 +146,7 @@ npm run dev:client-a          # http://localhost:5173
 | Menulis test | §6 |
 | Build image & smoke test lokal | §10 |
 | Deploy ke server | `DEPLOYMENT-GUIDE.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
+| Deploy end-to-end (clone → extension → compile → deploy) | `ZERO-TO-DEPLOY-GUIDE.md` |
 
 ---
 

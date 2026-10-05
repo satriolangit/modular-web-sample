@@ -2,7 +2,7 @@
 
 **Version**: 0.1.0
 **Audience**: DevOps / infrastructure engineers running ARSI client images on Linux VMs
-**Related**: `DEPLOYMENT-GUIDE.en.md` (image build, tagging, CI), `ARCHITECTURE.en.md` §16–17, `CONTRACT.en.md`
+**Related**: `DEPLOYMENT-GUIDE.en.md` (image build, tagging, CI), `ARCHITECTURE.en.md` §16–17, `CONTRACT.en.md`, `ZERO-TO-DEPLOY-GUIDE.en.md` (clone → deploy walkthrough)
 **Scope**: Running **already-built** client images (`<org>/arsi-web-<client>:<tag>`) on a Linux VM with Docker, a host reverse proxy, TLS, updates, and rollback. Building images is covered in `DEPLOYMENT-GUIDE.en.md`.
 
 > This document is English-only by request. The build/CI guide has an Indonesian pair (`DEPLOYMENT-GUIDE.md`).
