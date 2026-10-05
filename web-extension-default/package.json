@@ -1,5 +1,5 @@
 {
-  "name": "@arsi/extension-base",
+  "name": "@arsi/extension-default",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -18,7 +18,7 @@ const required = [
   'web-modules/package.json',
   'web-modules/shared/package.json',
   ...modulePackageJsons(),
-  'web-extension-base/package.json',
+  'web-extension-default/package.json',
 ];
 
 const dockerfile = readFileSync(dockerfilePath, 'utf8');

@@ -13,22 +13,22 @@ COPY web-modules/shared/package.json ./web-modules/shared/
 COPY web-modules/modules/user-management/package.json ./web-modules/modules/user-management/
 COPY web-modules/modules/product-management/package.json ./web-modules/modules/product-management/
 COPY web-modules/modules/module-sample/package.json ./web-modules/modules/module-sample/
-COPY web-extension-base/package.json web-extension-base/package-lock.json ./web-extension-base/
+COPY web-extension-default/package.json web-extension-default/package-lock.json ./web-extension-default/
 
 RUN cd web-container && npm ci
 RUN cd web-modules && npm ci
-RUN cd web-extension-base && npm ci
+RUN cd web-extension-default && npm ci
 
 COPY web-container ./web-container
 COPY web-modules ./web-modules
-COPY web-extension-base ./web-extension-base
+COPY web-extension-default ./web-extension-default
 
 RUN printf '%s' "$BASE_VERSION" > /app/BASE_VERSION
 
 FROM builder AS base-app
 
 RUN cd web-container \
-    && ln -sfn ../web-extension-base current-client \
+    && ln -sfn ../web-extension-default current-client \
     && npm run check:base \
     && CLIENT=base npm run build:client
 

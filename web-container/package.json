@@ -15,6 +15,7 @@
     "prebuild:client": "npm run gen:modules",
     "build:client": "vite build --outDir dist/${CLIENT:?CLIENT env required}",
     "link:client": "ln -sfn ../web-extension-${CLIENT:?CLIENT env required} current-client",
+    "link:base": "ln -sfn ../web-extension-default current-client",
     "check:base": "node scripts/check-base-version.mjs",
     "preview": "vite preview",
     "link:client-a": "ln -sfn ../web-extension-client-a current-client",
