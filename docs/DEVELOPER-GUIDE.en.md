@@ -87,12 +87,14 @@ cd arsi-web-base
 git clone <repo-arsi-web-client-a> web-extension-client-a
 ```
 
+> Client repo `arsi-web-client-<x>` does not exist yet? Create it from the template first (§4.9), then continue with dependency install in §0.4.
+
 Why must the extension live **inside** the base repo folder? Two path contracts depend on it:
 
 - container: `web-container/current-client -> ../web-extension-client-a` (relative to the `web-container` parent);
 - extension: `aliases.cjs`/`tsconfig.json` resolve `../web-container` and `../web-modules` relative to the extension folder.
 
-To keep the extension clone out of the base repo's untracked files, add a local exclude:
+To keep the extension clone out of the base repo's untracked files, add a local exclude (applies to **untracked** files; details & caveats in §4.9):
 
 ```bash
 echo "web-extension-*/" >> .git/info/exclude
@@ -114,6 +116,7 @@ cd arsi-web-base
 - Use `npm ci` (lockfiles are committed). Use `npm install` only when you actually change dependencies — then commit the lockfile.
 - Re-run `npm ci` after a `git pull` that changed a lockfile.
 - Switch the active client: `cd web-container && CLIENT=<client> npm run link:client` (restart the dev server).
+- For a new client, replace `web-extension-client-a` with `web-extension-client-<x>`; create the repo first if it does not exist (§4.9).
 
 ### 0.5 Run the dev server
 
@@ -143,6 +146,7 @@ npm run dev:client-a          # http://localhost:5173
 | Create a new module | §3 |
 | Modify an existing module | §3.17–§3.18 |
 | Create/modify a client extension | §4 |
+| Create a new client repo from the template (if missing) | §4.9 |
 | Write tests | §6 |
 | Build images & smoke test locally | §10 |
 | Deploy to a server | `DEPLOYMENT-GUIDE.en.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
@@ -994,26 +998,51 @@ expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.a
 
 ### 4.9 New client from the template
 
-1. Copy `web-extension-template` from the base repo into a new `arsi-web-client-<x>` repo (checkout: `web-extension-client-<x>`) and make it its own Git repo.
-2. Adjust `package.json` (`name` = `@arsi/extension-client-<x>`) and fill in `manifest.json`: `client` = `client-<x>` (e.g. `client-bca`), `baseVersion` = the current base tag (exact, e.g. `0.1.0`), plus `modules`/`shared`/`overrides` as needed.
-3. Build & push the client image — the base is **not** rebuilt; the script uses the base image `FROM` the registry:
+Used when the repo/folder `web-extension-client-<x>` does **not exist yet**:
 
-```bash
-cd web-extension-client-x
-ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
-```
+1. Create an empty `arsi-web-client-<x>` repo in the GitHub org (e.g. `satriolangit`).
+2. Copy the template from the base repo (the client folder must be a sibling of `web-container`/`web-modules`):
 
-4. Optional local dev (symlink `current-client` + a `dev:<client>` script):
+   ```bash
+   cd arsi-web-base
+   cp -R web-extension-template web-extension-client-<x>
+   rm -rf web-extension-client-<x>/node_modules
+   ```
 
-```bash
-cd web-extension-client-x
-npm ci                                 # install the extension dependencies
-cd ../web-container
-CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extension-client-x
-# add a "dev:client-x" script like dev:client-a, then run it
-```
+3. Adjust `package.json` (`name` = `@arsi/extension-client-<x>`) and `manifest.json`: `client` = `client-<x>` (e.g. `client-bca`), `baseVersion` = the current base tag (exact, e.g. `0.1.0`), plus `modules`/`shared`/`overrides` as needed.
+4. Make it its own Git repo, then push:
 
-`ci/build-client.sh` runs the extension verification (typecheck/test/lint) inside the base builder image; `check:base` ensures `baseVersion` matches the base in use. Full build/run/rollback details: `DEPLOYMENT-GUIDE.en.md` §3–§5.
+   ```bash
+   cd web-extension-client-<x>
+   git init -b main
+   git add .
+   git commit -m "feat: initial extension client-<x>"
+   git remote add origin <git-url-arsi-web-client-<x>>
+   git push -u origin main
+   ```
+
+   - The base repo's `.git/info/exclude` (§0.3) contains `web-extension-*/` so the client folder **does not show up in the base repo's `git status`** and is **never committed to the base repo**. The ignore only applies to **untracked** files; if it was already `git add`ed, remove it with `git rm -r --cached web-extension-client-<x>`. Never use `git add -f`.
+   - `web-extension-default/` and `web-extension-template/` are **intentionally tracked** in the base repo; the ignore pattern does not affect tracked files.
+   - Verify: `cd ..` → `git status` must be **clean**, and `git check-ignore -v web-extension-client-<x>/` must point to `.git/info/exclude`.
+
+5. Build & push the client image — the base is **not** rebuilt; the script uses the base image `FROM` the registry:
+
+   ```bash
+   cd web-extension-client-<x>
+   ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
+   ```
+
+6. Optional local dev (symlink `current-client` + a `dev:<client>` script):
+
+   ```bash
+   cd web-extension-client-<x>
+   npm ci                                 # install the extension dependencies
+   cd ../web-container
+   CLIENT=client-<x> npm run link:client  # symlink current-client -> ../web-extension-client-<x>
+   # add a "dev:client-<x>" script like dev:client-a, then run it
+   ```
+
+`ci/build-client.sh` runs the extension verification (typecheck/test/lint) inside the base builder image; `check:base` ensures `baseVersion` matches the base in use. Full build/run/rollback details: `DEPLOYMENT-GUIDE.en.md` §3–§5; end-to-end walkthrough: `ZERO-TO-DEPLOY-GUIDE.en.md` §4.1.
 
 ### 4.10 Running & testing an extension locally
 

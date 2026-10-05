@@ -87,12 +87,14 @@ cd arsi-web-base
 git clone <repo-arsi-web-client-a> web-extension-client-a
 ```
 
+> Belum ada repo `arsi-web-client-<x>`? Buat dulu dari template (§4.9), baru lanjut install dependency di §0.4.
+
 Kenapa extension harus **di dalam** folder base repo? Dua kontrak path bergantung padanya:
 
 - container: `web-container/current-client -> ../web-extension-client-a` (symlink relatif ke parent `web-container`);
 - extension: `aliases.cjs`/`tsconfig.json` meresolve `../web-container` dan `../web-modules` relatif ke folder extension.
 
-Agar clone extension tidak muncul sebagai untracked di repo base, tambahkan ke exclude lokal:
+Agar clone extension tidak muncul sebagai untracked di repo base, tambahkan ke exclude lokal (berlaku untuk file **untracked**; detail & caveat di §4.9):
 
 ```bash
 echo "web-extension-*/" >> .git/info/exclude
@@ -114,6 +116,7 @@ cd arsi-web-base
 - Pakai `npm ci` (lockfile di-commit). `npm install` hanya bila Anda memang mengubah dependency — lalu commit lockfile.
 - Ulangi `npm ci` setelah `git pull` yang mengubah lockfile.
 - Ganti client aktif: `cd web-container && CLIENT=<client> npm run link:client` (restart dev server).
+- Untuk client baru, ganti `web-extension-client-a` → `web-extension-client-<x>`; buat repo-nya dulu bila belum ada (§4.9).
 
 ### 0.5 Jalankan dev server
 
@@ -143,6 +146,7 @@ npm run dev:client-a          # http://localhost:5173
 | Membuat module baru | §3 |
 | Mengubah module yang ada | §3.17–§3.18 |
 | Membuat/mengubah extension client | §4 |
+| Membuat repo client baru dari template (belum ada) | §4.9 |
 | Menulis test | §6 |
 | Build image & smoke test lokal | §10 |
 | Deploy ke server | `DEPLOYMENT-GUIDE.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
@@ -994,26 +998,51 @@ expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.a
 
 ### 4.9 Client baru dari template
 
-1. Salin `web-extension-template` dari repo base menjadi repo baru `arsi-web-client-<x>` (checkout: `web-extension-client-<x>`), lalu jadikan repo Git sendiri.
-2. Sesuaikan `package.json` (`name` = `@arsi/extension-client-<x>`) dan isi `manifest.json`: `client` = `client-<x>` (mis. `client-bca`), `baseVersion` = tag base saat ini (exact, mis. `0.1.0`), plus `modules`/`shared`/`overrides` sesuai kebutuhan.
-3. Build & push image client — base **tidak** dibangun ulang; script memakai base image `FROM` registry:
+Dipakai bila repo/folder `web-extension-client-<x>` **belum ada**:
 
-```bash
-cd web-extension-client-x
-ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
-```
+1. Buat repo kosong `arsi-web-client-<x>` di GitHub org (mis. `satriolangit`).
+2. Salin template dari repo base (folder client harus sibling `web-container`/`web-modules`):
 
-4. Dev lokal opsional (symlink `current-client` + script `dev:<client>`):
+   ```bash
+   cd arsi-web-base
+   cp -R web-extension-template web-extension-client-<x>
+   rm -rf web-extension-client-<x>/node_modules
+   ```
 
-```bash
-cd web-extension-client-x
-npm ci                                 # install dependency extension
-cd ../web-container
-CLIENT=client-x npm run link:client    # symlink current-client -> ../web-extension-client-x
-# tambahkan script "dev:client-x" seperti dev:client-a, lalu jalankan
-```
+3. Sesuaikan `package.json` (`name` = `@arsi/extension-client-<x>`) dan `manifest.json`: `client` = `client-<x>` (mis. `client-bca`), `baseVersion` = tag base saat ini (exact, mis. `0.1.0`), plus `modules`/`shared`/`overrides` sesuai kebutuhan.
+4. Jadikan repo Git sendiri, lalu push:
 
-`ci/build-client.sh` menjalankan verifikasi extension (typecheck/test/lint) di dalam base builder image; `check:base` memastikan `baseVersion` cocok dengan base yang dipakai. Detail build/run/rollback: `DEPLOYMENT-GUIDE.md` §3–§5.
+   ```bash
+   cd web-extension-client-<x>
+   git init -b main
+   git add .
+   git commit -m "feat: initial extension client-<x>"
+   git remote add origin <git-url-arsi-web-client-<x>>
+   git push -u origin main
+   ```
+
+   - `.git/info/exclude` di repo base (§0.3) memuat `web-extension-*/` agar folder client **tidak muncul di `git status`** base dan **tidak ikut ter-commit** ke repo base. Ignore hanya berlaku untuk file **untracked**; kalau terlanjur ter-`git add`, keluarkan dengan `git rm -r --cached web-extension-client-<x>`. Jangan pakai `git add -f`.
+   - `web-extension-default/` dan `web-extension-template/` **sengaja tracked** di repo base; pola ignore tidak memengaruhi file yang sudah tracked.
+   - Verifikasi: `cd ..` → `git status` harus **clean**, dan `git check-ignore -v web-extension-client-<x>/` harus menunjuk `.git/info/exclude`.
+
+5. Build & push image client — base **tidak** dibangun ulang; script memakai base image `FROM` registry:
+
+   ```bash
+   cd web-extension-client-<x>
+   ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
+   ```
+
+6. Dev lokal opsional (symlink `current-client` + script `dev:<client>`):
+
+   ```bash
+   cd web-extension-client-<x>
+   npm ci                                 # install dependency extension
+   cd ../web-container
+   CLIENT=client-<x> npm run link:client  # symlink current-client -> ../web-extension-client-<x>
+   # tambahkan script "dev:client-<x>" seperti dev:client-a, lalu jalankan
+   ```
+
+`ci/build-client.sh` menjalankan verifikasi extension (typecheck/test/lint) di dalam base builder image; `check:base` memastikan `baseVersion` cocok dengan base yang dipakai. Detail build/run/rollback: `DEPLOYMENT-GUIDE.md` §3–§5; walkthrough end-to-end: `ZERO-TO-DEPLOY-GUIDE.md` §4.1.
 
 ### 4.10 Menjalankan & menguji extension di lokal
 
