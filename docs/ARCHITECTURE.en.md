@@ -373,13 +373,11 @@ deps.modal.register(sampleModals.info, SampleInfoModal);
 
 ### 4.7 Event Bus — Communication Without Coupling
 
-`deps.events` is a simple **event bus** (publish–subscribe): a sender calls `emit(name, payload)` and every handler registered via `on(name, handler)` is invoked — neither side knows the other. The implementation is a `Map<string, Set<handler>>` (`web-container/src/events/eventBus.ts:11`); `on` returns an unsubscribe function (`:18`).
+`deps.events` is a simple **event bus** (publish–subscribe): a sender calls `emit(name, payload)` and every handler registered via `on(name, handler)` is invoked — neither side knows the other. The implementation is a `Map<string, Set<handler>>` (`web-container/src/events/eventBus.ts:11`); `on` returns an unsubscribe function (`:18`). Inside components, the same bus is reached through the `useEventBus` hook (`web-container/src/public/index.ts:5`), which returns `deps.events` (`web-container/src/hooks/useEventBus.ts:5`).
 
 ```tsx
-// web-modules/modules/module-sample/index.tsx:52 — publisher
-deps.events.on<SamplePostCreatedPayload>(sampleEvents.postCreated, (payload) => {
-  deps.logger.info('module-sample: post created', payload);
-});
+// web-modules/modules/user-management/hooks/useUser.ts:75 — publisher (emit)
+events.emit(userEvents.updated, { id: user.id, changes: input.changes });
 ```
 
 ```tsx

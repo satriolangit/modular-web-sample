@@ -373,13 +373,11 @@ deps.modal.register(sampleModals.info, SampleInfoModal);
 
 ### 4.7 Event Bus — Komunikasi Tanpa Coupling
 
-`deps.events` adalah **event bus** (publish–subscribe) sederhana: pengirim memanggil `emit(nama, payload)`, dan setiap handler yang mendaftar lewat `on(nama, handler)` dipanggil — kedua pihak tidak saling mengenal. Implementasinya `Map<string, Set<handler>>` (`web-container/src/events/eventBus.ts:11`); `on` mengembalikan fungsi unsubscribe (`:18`).
+`deps.events` adalah **event bus** (publish–subscribe) sederhana: pengirim memanggil `emit(nama, payload)`, dan setiap handler yang mendaftar lewat `on(nama, handler)` dipanggil — kedua pihak tidak saling mengenal. Implementasinya `Map<string, Set<handler>>` (`web-container/src/events/eventBus.ts:11`); `on` mengembalikan fungsi unsubscribe (`:18`). Di dalam komponen, bus yang sama diakses lewat hook `useEventBus` (`web-container/src/public/index.ts:5`) yang mengembalikan `deps.events` (`web-container/src/hooks/useEventBus.ts:5`).
 
 ```tsx
-// web-modules/modules/module-sample/index.tsx:52 — publisher
-deps.events.on<SamplePostCreatedPayload>(sampleEvents.postCreated, (payload) => {
-  deps.logger.info('module-sample: post created', payload);
-});
+// web-modules/modules/user-management/hooks/useUser.ts:75 — publisher (emit)
+events.emit(userEvents.updated, { id: user.id, changes: input.changes });
 ```
 
 ```tsx
