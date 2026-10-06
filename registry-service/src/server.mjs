@@ -35,11 +35,11 @@ export function createApp(config) {
     }),
   );
 
-  app.use(express.json());
-
   app.use('/api', (req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
     res.setHeader('Vary', 'Origin');
+    if (config.adminCorsOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', config.adminCorsOrigin);
+    }
     if (req.method === 'OPTIONS') {
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -49,6 +49,8 @@ export function createApp(config) {
     }
     next();
   });
+
+  app.use(express.json());
 
   app.get('/api/modules', bearerAuth(config), (_req, res) => {
     const registry = readRegistry(config.dataDir);

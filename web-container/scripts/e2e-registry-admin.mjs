@@ -108,6 +108,7 @@ async function main() {
     env: {
       ...process.env,
       ADMIN_TOKEN,
+      ADMIN_CORS_ORIGIN: APP_URL,
       DATA_DIR: dataDir,
       PORT: String(SERVICE_PORT),
       PUBLIC_BASE_URL: `http://127.0.0.1:${SERVICE_PORT}`,

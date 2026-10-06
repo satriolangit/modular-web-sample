@@ -14,6 +14,7 @@ export function loadConfig(env = process.env) {
     dataDir: path.resolve(env.DATA_DIR ?? './data'),
     publicBaseUrl: (env.PUBLIC_BASE_URL?.trim() || `http://localhost:${port}`).replace(/\/$/, ''),
     corsOrigin: env.CORS_ORIGIN?.trim() || '*',
+    adminCorsOrigin: env.ADMIN_CORS_ORIGIN?.trim() || null,
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES ?? 20 * 1024 * 1024),
   };
 }
