@@ -1,6 +1,7 @@
 node_modules
 dist
 coverage
+@mf-types
 current-client
 .env
 .env.*

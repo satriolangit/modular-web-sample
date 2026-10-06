@@ -21,7 +21,7 @@ module.exports = {
       typescript: { project: './tsconfig.json' },
     },
   },
-  ignorePatterns: ['node_modules', 'dist', 'coverage', 'current-client', '*.cjs'],
+  ignorePatterns: ['node_modules', 'dist', 'coverage', 'current-client', '@mf-types', '*.cjs'],
   rules: {
     'import/no-unresolved': 'off',
     'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
