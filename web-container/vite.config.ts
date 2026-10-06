@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
+import { federation } from '@module-federation/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
@@ -83,8 +84,30 @@ function devConfigPlugin(): Plugin {
   };
 }
 
+const shared = {
+  react: { singleton: true },
+  'react-dom': { singleton: true },
+  'react/jsx-runtime': { singleton: true },
+  'react/jsx-dev-runtime': { singleton: true },
+  'react-router': { singleton: true },
+  'react-router-dom': { singleton: true },
+  zustand: { singleton: true },
+  '@tanstack/react-query': { singleton: true },
+  i18next: { singleton: true },
+  'react-i18next': { singleton: true },
+  axios: { singleton: true },
+  sonner: { singleton: true },
+};
+
 export default defineConfig({
-  plugins: [react(), devConfigPlugin()],
+  plugins: [
+    react(),
+    federation({
+      name: 'arsi-host',
+      shared,
+    }),
+    devConfigPlugin(),
+  ],
   resolve: {
     alias: aliases,
     dedupe: [
@@ -109,6 +132,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: 'esnext',
     sourcemap: true,
   },
 });
