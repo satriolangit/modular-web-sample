@@ -13,6 +13,7 @@
     "prebuild": "npm run gen:modules",
     "build": "node scripts/build.mjs",
     "build:module": "node scripts/build-module.mjs",
+    "pack:module": "node scripts/pack-module.mjs",
     "prebuild:client": "npm run gen:modules",
     "build:client": "vite build --outDir dist/${CLIENT:?CLIENT env required}",
     "link:client": "ln -sfn ../web-extension-${CLIENT:?CLIENT env required} current-client",
