@@ -18,6 +18,12 @@ if (!existsSync(distDir)) {
   process.exit(1);
 }
 
+const mfManifestPath = path.join(distDir, 'mf-manifest.json');
+if (!existsSync(mfManifestPath)) {
+  console.error(`[pack-module] ${mfManifestPath} belum ada — jalankan build:module dulu`);
+  process.exit(1);
+}
+
 const manifest = {
   name,
   version: pkg.version,
@@ -31,7 +37,7 @@ const manifest = {
 const manifestPath = path.join(distDir, 'manifest.json');
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-const integrity = `sha384-${createHash('sha384').update(readFileSync(manifestPath)).digest('base64')}`;
+const integrity = `sha384-${createHash('sha384').update(readFileSync(mfManifestPath)).digest('base64')}`;
 const zipName = `${name}-${pkg.version}.zip`;
 
 const zip = spawnSync('zip', ['-qr', zipName, name], {
