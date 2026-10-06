@@ -13,6 +13,7 @@ COPY web-modules/shared/package.json ./web-modules/shared/
 COPY web-modules/modules/user-management/package.json ./web-modules/modules/user-management/
 COPY web-modules/modules/product-management/package.json ./web-modules/modules/product-management/
 COPY web-modules/modules/module-sample/package.json ./web-modules/modules/module-sample/
+COPY web-modules/modules/registry-admin/package.json ./web-modules/modules/registry-admin/
 COPY web-extension-default/package.json web-extension-default/package-lock.json ./web-extension-default/
 
 RUN cd web-container && npm ci

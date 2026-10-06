@@ -1,7 +1,8 @@
 {
   "client": "client-a",
-  "modules": ["user-management", "product-management", "module-sample"],
+  "modules": ["user-management", "product-management", "module-sample", "registry-admin"],
   "apiBase": "https://dummyjson.com",
+  "registryAdminUrl": "http://localhost:4310",
   "featureFlags": {
     "enableAuditLive": true
   }

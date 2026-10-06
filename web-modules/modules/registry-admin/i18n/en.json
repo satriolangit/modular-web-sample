@@ -1,0 +1,40 @@
+{
+  "menu": "Module Registry",
+  "title": "Module Registry",
+  "description": "Upload and manage installable modules for this platform.",
+  "token": {
+    "label": "Admin token",
+    "placeholder": "Bearer token",
+    "save": "Save token",
+    "saved": "Token saved",
+    "missing": "Set the admin token to manage modules."
+  },
+  "upload": {
+    "title": "Upload module",
+    "hint": "Drop the module zip here or click to choose",
+    "button": "Upload",
+    "success": "Module {{name}}@{{version}} uploaded",
+    "error": "Upload failed: {{message}}"
+  },
+  "table": {
+    "name": "Name",
+    "version": "Version",
+    "apiVersion": "API",
+    "status": "Status",
+    "actions": "Actions",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "empty": "No modules installed yet."
+  },
+  "actions": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "delete": "Delete",
+    "deleteConfirm": "Delete module {{name}}? This removes its files."
+  },
+  "errors": {
+    "notConfigured": "registryAdminUrl is not configured for this deployment.",
+    "unauthorized": "Invalid admin token.",
+    "load": "Failed to load modules: {{message}}"
+  }
+}

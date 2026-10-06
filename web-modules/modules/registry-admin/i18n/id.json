@@ -1,0 +1,40 @@
+{
+  "menu": "Module Registry",
+  "title": "Module Registry",
+  "description": "Unggah dan kelola module installable untuk platform ini.",
+  "token": {
+    "label": "Token admin",
+    "placeholder": "Bearer token",
+    "save": "Simpan token",
+    "saved": "Token tersimpan",
+    "missing": "Isi token admin untuk mengelola module."
+  },
+  "upload": {
+    "title": "Unggah module",
+    "hint": "Jatuhkan zip module di sini atau klik untuk memilih",
+    "button": "Unggah",
+    "success": "Module {{name}}@{{version}} berhasil diunggah",
+    "error": "Upload gagal: {{message}}"
+  },
+  "table": {
+    "name": "Nama",
+    "version": "Versi",
+    "apiVersion": "API",
+    "status": "Status",
+    "actions": "Aksi",
+    "enabled": "Aktif",
+    "disabled": "Nonaktif",
+    "empty": "Belum ada module terpasang."
+  },
+  "actions": {
+    "enable": "Aktifkan",
+    "disable": "Nonaktifkan",
+    "delete": "Hapus",
+    "deleteConfirm": "Hapus module {{name}}? File-nya ikut terhapus."
+  },
+  "errors": {
+    "notConfigured": "registryAdminUrl belum dikonfigurasi untuk deployment ini.",
+    "unauthorized": "Token admin tidak valid.",
+    "load": "Gagal memuat module: {{message}}"
+  }
+}
