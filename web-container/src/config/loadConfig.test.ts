@@ -61,4 +61,39 @@ describe('loadConfig', () => {
 
     expect(config.client).toBe('default');
   });
+
+  it('passes through registryAdminUrl string', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          client: 'a',
+          modules: [],
+          apiBase: '',
+          registryUrl: '/modules/registry.json',
+          registryAdminUrl: 'http://localhost:4310',
+        }),
+      }),
+    );
+
+    const config = await loadConfig();
+
+    expect(config.registryUrl).toBe('/modules/registry.json');
+    expect(config.registryAdminUrl).toBe('http://localhost:4310');
+  });
+
+  it('ignores non-string registryAdminUrl', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ registryAdminUrl: 123 }),
+      }),
+    );
+
+    const config = await loadConfig();
+
+    expect(config.registryAdminUrl).toBeUndefined();
+  });
 });

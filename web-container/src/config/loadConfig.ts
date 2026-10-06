@@ -19,6 +19,8 @@ function normalizeConfig(value: unknown): AppConfig {
         : DEFAULT_CONFIG.featureFlags,
     registryUrl:
       typeof candidate.registryUrl === 'string' ? candidate.registryUrl : undefined,
+    registryAdminUrl:
+      typeof candidate.registryAdminUrl === 'string' ? candidate.registryAdminUrl : undefined,
   };
 }
 

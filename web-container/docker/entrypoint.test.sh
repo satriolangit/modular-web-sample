@@ -84,6 +84,11 @@ OUT="$TMP_DIR/registry.json"
 CONFIG_FILE="$OUT" VITE_REGISTRY_URL=https://cdn.example/registry.json sh "$ENTRYPOINT" >/dev/null
 expect_contains "$OUT" '"registryUrl": "https://cdn.example/registry.json"' "registry: registryUrl diteruskan"
 
+# 8. registryAdminUrl dari env
+OUT="$TMP_DIR/registry-admin.json"
+CONFIG_FILE="$OUT" VITE_REGISTRY_ADMIN_URL=http://localhost:4310 sh "$ENTRYPOINT" >/dev/null
+expect_contains "$OUT" '"registryAdminUrl": "http://localhost:4310"' "registry admin: URL diteruskan"
+
 echo ""
 echo "[entrypoint.test] ${PASS} passed, ${FAIL} failed"
 [ "$FAIL" -eq 0 ]

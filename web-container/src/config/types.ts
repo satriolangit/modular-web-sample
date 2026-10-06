@@ -4,6 +4,7 @@ export interface AppConfig {
   apiBase: string;
   featureFlags?: Record<string, boolean>;
   registryUrl?: string;
+  registryAdminUrl?: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
