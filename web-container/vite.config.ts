@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 import { resolveClientId } from './scripts/current-client.mjs';
+import { buildDevConfig, loadBaseConfig } from './scripts/dev-config.mjs';
 
 const require = createRequire(import.meta.url);
 const aliases = require('./aliases.cjs') as Record<string, string>;
@@ -16,38 +17,6 @@ const workspaceRoot = fileURLToPath(new URL('..', import.meta.url));
 
 type Env = Record<string, string | undefined>;
 
-function csvModules(value: string | undefined): string[] {
-  return (value ?? 'user-management')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function buildDevConfig(clientId: string, env: Env): Record<string, unknown> {
-  const rawJson = env.VITE_CONFIG_JSON?.trim();
-  if (rawJson) {
-    const compact = rawJson.replace(/[\r\n]+/g, '').trim();
-    if (!(compact.startsWith('{') && compact.endsWith('}'))) {
-      throw new Error(
-        "[dev-config] VITE_CONFIG_JSON must be a JSON object (start with '{' and end with '}')",
-      );
-    }
-    return JSON.parse(compact) as Record<string, unknown>;
-  }
-
-  const registryUrl = env.VITE_REGISTRY_URL?.trim();
-  const registryAdminUrl = env.VITE_REGISTRY_ADMIN_URL?.trim();
-
-  return {
-    client: clientId,
-    modules: csvModules(env.VITE_MODULES),
-    apiBase: env.VITE_API_BASE ?? 'https://dummyjson.com',
-    featureFlags: { enableAuditLive: env.VITE_ENABLE_AUDIT_LIVE !== 'false' },
-    ...(registryUrl ? { registryUrl } : {}),
-    ...(registryAdminUrl ? { registryAdminUrl } : {}),
-  };
-}
-
 function devConfigPlugin(): Plugin {
   return {
     name: 'arsi-dev-config',
@@ -55,11 +24,14 @@ function devConfigPlugin(): Plugin {
     configureServer(server) {
       const env: Env = { ...loadEnv(server.config.mode, rootDir, ''), ...process.env };
       const fallbackPath = `${server.config.publicDir}/config.json`;
+      const base = loadBaseConfig(server.config.publicDir);
 
       let clientId: string | null = null;
       try {
         clientId = resolveClientId({ env }).id;
-        console.log(`[dev-config] client=${clientId}; /config.json digenerate dari env`);
+        console.log(
+          `[dev-config] client=${clientId}; /config.json = env + public/config.json${base ? '' : ' (base tidak ada)'}`,
+        );
       } catch (error) {
         console.warn(`[dev-config] ${(error as Error).message}`);
         console.warn(`[dev-config] fallback ke public/config.json`);
@@ -70,7 +42,7 @@ function devConfigPlugin(): Plugin {
         res.setHeader('Cache-Control', 'no-store');
         try {
           if (env.VITE_CONFIG_JSON?.trim() || clientId) {
-            res.end(JSON.stringify(buildDevConfig(clientId ?? 'base', env)));
+            res.end(JSON.stringify(buildDevConfig({ clientId: clientId ?? 'base', env, base })));
             return;
           }
           if (existsSync(fallbackPath)) {
