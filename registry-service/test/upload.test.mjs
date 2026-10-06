@@ -1,9 +1,9 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { zipSync } from 'fflate';
-import { afterEach, describe, expect, it } from 'vitest';
+import { unzipSync, zipSync } from 'fflate';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { loadConfig } from '../src/config.mjs';
 import { createApp } from '../src/server.mjs';
@@ -29,6 +29,7 @@ async function startApp(config) {
 afterEach(() => {
   for (const server of running) server.close();
   running = [];
+  vi.restoreAllMocks();
 });
 
 function buildZip({ name = 'demo-module', version = '1.0.0', apiVersion = 1, extra = {}, drop = [] } = {}) {
@@ -140,5 +141,57 @@ describe('POST /api/modules', () => {
       buildZip({ extra: { 'signature.ed25519': new Uint8Array(signature) } }),
     );
     expect(signed.status).toBe(201);
+  });
+
+  it('menerima zip dengan entry direktori assets/ (gaya zip -qr)', async () => {
+    const { server, base, config } = await startApp(testConfig());
+    running.push(server);
+    const res = await upload(base, buildZip({ extra: { 'assets/': new Uint8Array() } }));
+    expect(res.status).toBe(201);
+    expect(
+      existsSync(path.join(config.dataDir, 'modules', 'demo-module', '1.0.0', 'assets', 'index-abc.js')),
+    ).toBe(true);
+  });
+
+  it('menulis audit sebelum registry walau registry gagal ditulis', async () => {
+    const { server, base, config } = await startApp(testConfig());
+    running.push(server);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mkdirSync(path.join(config.dataDir, `registry.json.tmp-${process.pid}`), { recursive: true });
+    const res = await upload(base, buildZip());
+    expect(res.status).toBe(500);
+    expect(existsSync(path.join(config.dataDir, 'audit.jsonl'))).toBe(true);
+    const audit = readFileSync(path.join(config.dataDir, 'audit.jsonl'), 'utf8').trim().split('\n');
+    expect(audit).toHaveLength(1);
+  });
+
+  it('menolak signature ed25519 tidak valid', async () => {
+    const { publicKey } = generateKeyPairSync('ed25519');
+    const other = generateKeyPairSync('ed25519');
+    const pem = publicKey.export({ type: 'spki', format: 'pem' });
+    const config = testConfig({ SIGNING_PUBLIC_KEY: pem });
+    const { server, base } = await startApp(config);
+    running.push(server);
+    const mfBytes = new TextEncoder().encode(JSON.stringify({ name: 'demo-module', metaData: {} }));
+    const signature = sign(null, Buffer.from(mfBytes), other.privateKey);
+    const res = await upload(
+      base,
+      buildZip({ extra: { 'signature.ed25519': new Uint8Array(signature) } }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('integrity sha384 dihitung dari byte mf-manifest.json', async () => {
+    const { server, base, config } = await startApp(testConfig());
+    running.push(server);
+    const zip = buildZip();
+    const res = await upload(base, zip);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const mfBytes = unzipSync(new Uint8Array(zip))['mf-manifest.json'];
+    const expected = `sha384-${createHash('sha384').update(mfBytes).digest('base64')}`;
+    expect(body.module.integrity).toBe(expected);
+    const registry = JSON.parse(readFileSync(path.join(config.dataDir, 'registry.json'), 'utf8'));
+    expect(registry.modules['demo-module'].integrity).toBe(expected);
   });
 });

@@ -88,7 +88,6 @@ export function createApp(config) {
         css: css.map((file) => `${base}/${file}`),
         enabled: true,
       };
-      writeRegistry(config.dataDir, registry);
       writeAudit(config.dataDir, {
         actor: config.adminActor,
         action: 'upload',
@@ -96,6 +95,7 @@ export function createApp(config) {
         version: manifest.version,
         ip: req.ip,
       });
+      writeRegistry(config.dataDir, registry);
       res.status(201).json({ module: { name: manifest.name, ...registry.modules[manifest.name] } });
     } catch (error) {
       if (error instanceof ValidationError) {

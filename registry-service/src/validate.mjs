@@ -23,6 +23,9 @@ export function unzip(buffer) {
     if (normalized.startsWith('..') || normalized.includes('/../')) {
       throw new ValidationError(`entry path tidak aman: ${entry}`);
     }
+    if (entry.endsWith('/')) {
+      delete files[entry];
+    }
   }
   return files;
 }
