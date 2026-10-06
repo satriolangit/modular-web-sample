@@ -71,7 +71,7 @@ cp .env.example .env
 | `VITE_REGISTRY_ADMIN_URL` | base URL registry service untuk UI admin `/system/modules` |
 | `VITE_CONFIG_JSON` | override penuh `/config.json` (JSON object) |
 
-Config dev digenerate dev server dari env di atas; `public/config.json` hanya fallback (tidak perlu diubah per client).
+Config dev = env individual **menimpa** base `public/config.json`, dengan fallback default (`user-management`, dummyjson); `VITE_CONFIG_JSON` menang penuh. `public/config.json` **tidak perlu** diubah per client — base repo ini sudah memuat 4 module dev (termasuk `module-sample` yang di-override extension client-a).
 
 ### 2.3 Jalankan dev server
 
@@ -354,7 +354,7 @@ curl -sS -X DELETE "$BASE/api/modules/order-management" \
 | CSS module tidak tampil | `module.css` tidak ada di zip / tidak terdaftar di manifest `css`. Jalankan `build:module` + `pack:module` ulang. |
 | `Invalid hook call` di module | Ada value-import dari `@arsi/container`. Ganti ke `deps.runtime`/`useRuntime()`. |
 | `module "x" ... not found in the registry` | Registry tidak bisa dibaca atau module belum diupload; loader fail-closed melewati module (app tetap boot). |
-| Extension gagal init setelah install module | `VITE_MODULES` harus memuat module yang di-override extension aktif (client-a: `module-sample`). |
+| Extension gagal init / override dilewati setelah install module | `VITE_MODULES` harus memuat module yang di-override extension aktif (client-a: `module-sample`). Dengan guard `routes.has`, extension hanya `warn` dan melewati override (fitur override tidak aktif) alih-alih error. |
 
 ---
 

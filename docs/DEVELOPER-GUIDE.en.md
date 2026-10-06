@@ -952,6 +952,16 @@ deps.routes.add({
 
 `override` on a path the module has not registered will **throw** — the boot order guarantees the module initializes before the extension, so make sure the path is correct. Don't forget to include `meta` (an override replaces the whole entry).
 
+For **optional** modules (which can be disabled via `config.modules`), guard with `routes.has` so the extension cannot break the boot:
+
+```ts
+if (deps.routes.has('/module-sample/extension-points')) {
+  deps.routes.override('/module-sample/extension-points', { element: <ClientAExtensionPointsPage /> });
+} else {
+  deps.logger.warn('module-sample route is not active; override skipped');
+}
+```
+
 Living example: `/module-sample/extension-points` is overridden by client-a (`web-extension-client-a/src/components/ClientAExtensionPointsPage.tsx`).
 
 ### 4.5 Service wrapper (the heaviest level, use when slots & routes are not enough)

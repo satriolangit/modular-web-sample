@@ -952,6 +952,16 @@ deps.routes.add({
 
 `override` untuk path yang belum diregistrasi module akan **throw** — urutan boot menjamin module init sebelum extension, jadi pastikan path-nya benar. Jangan lupa sertakan `meta` (override mengganti seluruh entry).
 
+Untuk module **opsional** (bisa dinonaktifkan via `config.modules`), guard dulu dengan `routes.has` agar extension tidak menggagalkan boot:
+
+```ts
+if (deps.routes.has('/module-sample/extension-points')) {
+  deps.routes.override('/module-sample/extension-points', { element: <ClientAExtensionPointsPage /> });
+} else {
+  deps.logger.warn('route module-sample tidak aktif; override dilewati');
+}
+```
+
 Contoh hidup: `/module-sample/extension-points` di-override oleh client-a (`web-extension-client-a/src/components/ClientAExtensionPointsPage.tsx`).
 
 ### 4.5 Service wrapper (paling berat, pakai jika slot & route tidak cukup)

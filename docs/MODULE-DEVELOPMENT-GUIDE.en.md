@@ -71,7 +71,7 @@ cp .env.example .env
 | `VITE_REGISTRY_ADMIN_URL` | registry service base URL for the admin UI `/system/modules` |
 | `VITE_CONFIG_JSON` | full `/config.json` override (JSON object) |
 
-The dev server generates the dev config from the envs above; `public/config.json` is only a fallback (no per-client edits needed).
+Dev config = individual envs **override** the `public/config.json` base, with sensible defaults (`user-management`, dummyjson); `VITE_CONFIG_JSON` wins entirely. `public/config.json` needs **no** per-client edits — this repo's base already lists the 4 dev modules (including `module-sample`, which the client-a extension overrides).
 
 ### 2.3 Start the dev server
 
@@ -354,7 +354,7 @@ curl -sS -X DELETE "$BASE/api/modules/order-management" \
 | Module CSS not applied | `module.css` missing from the zip / not listed in the manifest `css`. Re-run `build:module` + `pack:module`. |
 | `Invalid hook call` in the module | A value-import from `@arsi/container` exists. Switch to `deps.runtime`/`useRuntime()`. |
 | `module "x" ... not found in the registry` | The registry is unreachable or the module was not uploaded; the loader is fail-closed and skips it (the app still boots). |
-| Extension fails to init after installing a module | `VITE_MODULES` must include modules overridden by the active extension (client-a: `module-sample`). |
+| Extension fails to init / override is skipped after installing a module | `VITE_MODULES` must include modules overridden by the active extension (client-a: `module-sample`). With the `routes.has` guard, the extension only `warn`s and skips the override (the override is inactive) instead of erroring. |
 
 ---
 
