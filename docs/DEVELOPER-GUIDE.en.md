@@ -152,6 +152,7 @@ npm run dev          # http://localhost:5173
 | Build images & smoke test locally | §10 |
 | Deploy to a server | `DEPLOYMENT-GUIDE.en.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
 | Deploy end-to-end (clone → extension → compile → deploy) | `ZERO-TO-DEPLOY-GUIDE.en.md` |
+| Run + create + install an installable module | `MODULE-DEVELOPMENT-GUIDE.en.md` |
 
 ---
 
@@ -292,6 +293,8 @@ Always try from the lightest: **Slot → Route → Service wrapper**.
 ## 3. Creating a New Module
 
 Case study: `order-management`. Copy the structure from `web-modules/modules/product-management/` as a complete CRUD reference, or `user-management` for a simpler version.
+
+For an **installable** module (built separately then uploaded to the registry, `deps.runtime` pattern), see `MODULE-DEVELOPMENT-GUIDE.en.md`; the conventions below still apply.
 
 ### 3.0 Step checklist
 

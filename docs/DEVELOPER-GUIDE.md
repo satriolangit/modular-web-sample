@@ -152,6 +152,7 @@ npm run dev          # http://localhost:5173
 | Build image & smoke test lokal | §10 |
 | Deploy ke server | `DEPLOYMENT-GUIDE.md`, `VM-DEPLOYMENT-GUIDE.en.md` |
 | Deploy end-to-end (clone → extension → compile → deploy) | `ZERO-TO-DEPLOY-GUIDE.md` |
+| Run + buat + install module installable | `MODULE-DEVELOPMENT-GUIDE.md` |
 
 ---
 
@@ -292,6 +293,8 @@ Selalu coba dari yang paling ringan: **Slot → Route → Service wrapper**.
 ## 3. Membuat Module Baru
 
 Studi kasus: `order-management`. Salin struktur dari `web-modules/modules/product-management/` sebagai referensi CRUD lengkap, atau `user-management` untuk versi lebih sederhana.
+
+Untuk module **installable** (dibuild terpisah lalu diupload ke registry, pola `deps.runtime`), lihat `MODULE-DEVELOPMENT-GUIDE.md`; konvensi di bawah tetap berlaku.
 
 ### 3.0 Checklist langkah
 

@@ -17,6 +17,7 @@
 - **List**, **enable/disable**, and **delete** modules through the bearer-token admin API.
 - **Public** (`/registry.json`, `/modules/**`) is read by the container; **admin** (`/api/modules`) requires the service token.
 - Changes take effect on the **next boot**: the loader is fail-closed, running client apps are not killed.
+- How to create an installable module (`deps.runtime` pattern, `build:module`, `pack:module`): `MODULE-DEVELOPMENT-GUIDE.en.md`.
 
 ---
 

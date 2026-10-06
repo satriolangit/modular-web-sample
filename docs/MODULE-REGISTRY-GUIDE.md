@@ -17,6 +17,7 @@
 - **List**, **enable/disable**, dan **delete** module lewat API admin ber-bearer token.
 - **Publik** (`/registry.json`, `/modules/**`) dibaca container; **admin** (`/api/modules`) butuh token service.
 - Perubahan terlihat saat **boot berikutnya**: loader fail-closed, app klien yang sedang jalan tidak dimatikan.
+- Cara membuat module installable (pola `deps.runtime`, `build:module`, `pack:module`): `MODULE-DEVELOPMENT-GUIDE.md`.
 
 ---
 
