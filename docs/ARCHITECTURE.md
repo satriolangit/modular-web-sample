@@ -641,3 +641,218 @@ flowchart LR
 Setelah image klien jadi, runtime-nya berperilaku seperti base: entrypoint menulis `/config.json` dari env saat container start (§6.3), jadi image yang sama bisa dipakai untuk beberapa environment.
 
 Langkah operasional lengkap — build, push, jalankan, sampai smoke test — ada di `DEPLOYMENT-GUIDE`: **Tutorial A** (deploy di laptop lokal), **Tutorial B** (deploy di Ubuntu server), dan **Tutorial C** (deploy via Azure CI/CD).
+
+---
+
+## Bagian II — Referensi
+
+Bagian I membangun model mental; Bagian II adalah **referensi kerja**: ringkasan tiap mekanisme beserta penunjuk ke aturan normatifnya. Kode di repo adalah kebenaran terakhir, aturan wajib/dilarang ada di `CONTRACT`, dan langkah praktis ada di `DEVELOPER-GUIDE`.
+
+## 9. Layer & Aturan Dependensi
+
+Ada empat lapisan berkode — container, shared, module, extension — dan **dependensi hanya boleh mengarah satu arah ke bawah**: extension tahu base, base tidak pernah tahu extension atau module secara langsung.
+
+```mermaid
+flowchart TD
+    E[Extension] --> M[Module] & C[Container] & S[Shared]
+    M --> C & S
+    C -.->|discover via config, bukan import| M
+```
+
+| Aturan | Artinya |
+| --- | --- |
+| Container tidak meng-import module/extension | Module ditemukan dari `config.modules` lewat loader map (§4.1) |
+| Module tidak meng-import module lain | Komunikasi lewat event bus (§10.3); API yang memang publik di-import dari `public.ts` module itu |
+| Shared tidak meng-import container/module | `@arsi/shared` murni komponen/hook/util |
+| Container self-contained | Container tidak boleh import `@arsi/shared`; styling shell memakai token sendiri (`CONTRACT` §9.4) |
+| Import hanya dari public API | `@arsi/container`, `@arsi/shared`, dan `public.ts` module (`CONTRACT` §1.4) |
+
+Aturan lengkap beserta dependency matrix: `CONTRACT` §1; cara mengakses layanan dari luar dan dalam React tree: `CONTRACT` §2.
+
+## 10. State, Data Fetching, Event, UI
+
+Enam pola berikut ada di hampir setiap module. Di `init(deps)` pakai objek `deps`; di dalam komponen pakai hook dari `@arsi/container` (`CONTRACT` §2.1).
+
+### 10.1 State per-module — Zustand
+
+Setiap module punya store sendiri untuk **UI state** (filter, halaman, item terpilih); container punya store global (`auth`, `theme`, `locale`). Store module di-export lewat `public.ts` supaya extension boleh memakainya — module lain tetap dilarang.
+
+```ts
+// web-modules/modules/user-management/store/useUserStore.ts:16
+export const useUserStore = create<UserUiState>()(
+  devtools(
+    persist((set) => ({ search: '', page: 1, /* ... */ }), { name: 'module:user-management' }),
+    { name: 'user-management', enabled: isDev },
+  ),
+);
+```
+
+Persist key wajib ber-namespace `<layer>:<name>`. Aturan lengkap: `CONTRACT` §3.
+
+### 10.2 Data fetching — React Query + service factory
+
+Data dari API → React Query; state UI murni → Zustand. Service wajib berupa *factory function* — menerima axios instance dan mengembalikan objek service — supaya tidak menyentuh `deps` dan mudah diuji.
+
+```ts
+// web-modules/modules/user-management/hooks/useUser.ts
+const api = useApi();
+const service = useMemo(() => createUserService(api), [api]);
+return useQuery({ queryKey: userKeys.list(params), queryFn: () => service.list(params) });
+```
+
+Query key per module ada di `queryKeys.ts`, ber-namespace, dan di-export `public.ts` supaya extension bisa meng-invalidate cache. `QueryClient` hanya dibuat container; setiap mutation meng-invalidate key yang relevan. Aturan lengkap: `CONTRACT` §5.
+
+### 10.3 Event bus — komunikasi lintas module
+
+Pengirim memanggil `emit(nama, payload)`; penerima mendaftar lewat `on(nama, handler)`, dan keduanya tidak saling mengenal. Nama event ber-namespace `<module>.<entity>.<action>`; tipe payload di-export `public.ts`.
+
+```ts
+// module mengirim
+events.emit(userEvents.updated, { id, changes });
+// extension mendengar (didaftarkan di init)
+deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
+  void deps.queryClient.invalidateQueries({ queryKey: userKeys.detail(payload.id) });
+});
+```
+
+Module tidak boleh mendengarkan event extension. Aturan lengkap: `CONTRACT` §13.
+
+### 10.4 i18n — satu namespace per module
+
+Setiap module mendaftarkan bundle `en`/`id` dengan namespace namanya; extension boleh menimpa bundle module lewat *deep merge* (key yang sama ditimpa, sisanya tetap), tetapi tidak namespace bawaan container tanpa kesepakatan. Teks UI selalu key i18n, bukan string hardcode.
+
+```ts
+deps.i18n.addResourceBundle('en', 'user-management', en);
+const { t } = useTranslation('user-management');
+```
+
+Aturan lengkap: `CONTRACT` §6.
+
+### 10.5 Toast, modal, notifikasi
+
+Tiga kanal umpan balik milik container: `toast` (pesan sekilas), `modal` (dialog ber-payload `{ payload, close }`), dan `notifications` (bell persisten di Topbar). Nama modal ber-namespace `<module>.<action>` dan registrasinya di `init`, bukan di komponen.
+
+```ts
+deps.modal.register(sampleModals.info, SampleInfoModal);
+deps.modal.open(sampleModals.info, payload);
+toast.success(t('create.success')); // dari useToast()
+```
+
+Aturan lengkap: `CONTRACT` §7–§8.
+
+### 10.6 UI kit & styling
+
+Komponen bersama ada di `web-modules/shared` dan diimpor dari `@arsi/shared`; module/extension dilarang import `components/ui/*` langsung atau membuat konfigurasi Tailwind sendiri. Komponen yang sangat spesifik module boleh tinggal di module. Container **self-contained**: ia tidak import `@arsi/shared` dan memakai token warnanya sendiri (ARSI Purple `#551AB9` di CSS variables). Menambah komponen baru:
+
+```bash
+cd web-modules/shared && npx shadcn@latest add <component>
+```
+
+Aturan lengkap: `CONTRACT` §9–§10.
+
+## 11. Path Mapping & Aliases
+
+Import antar-paket memakai alias, bukan path relatif. Definisi alias ada di dua tempat yang harus sinkron: `web-container/aliases.cjs` (dipakai Vite) dan `web-container/tsconfig.json:paths` (dipakai TypeScript/ESLint, karena tsconfig tidak bisa membaca `.cjs`).
+
+| Alias | Resolve ke | Dipakai oleh |
+| --- | --- | --- |
+| `@arsi/container` | `web-container/src/public/index.ts` | module & extension |
+| `@arsi/shared` | `web-modules/shared/index.ts` | module & extension |
+| `@arsi/module-*` | `web-modules/modules/*/public.ts` | extension (kontrak module) |
+| `@arsi/module-*/entry` | `web-modules/modules/*/index.tsx` | loader map container (§4.1) |
+| `@arsi/extension` | `web-container/current-client/src/index.tsx` | container (extension aktif) |
+
+Dua pola `@arsi/module-*` adalah **wildcard** (pola `*` yang cocok untuk nama module apa pun): menambah module tidak perlu mengubah alias. Urutan penting — pola `/entry` ditulis sebelum pola dasar agar tidak tertangkap pola dasar (`aliases.cjs:9-15`). `current-client` adalah symlink ke extension aktif (dev: `CLIENT=client-a npm run link:client`; di image builder diarahkan ke `/app/extension`).
+
+Loader map `web-container/src/bootstrap/moduleLoaders.generated.ts` dihasilkan `npm run gen:modules` dari `package.json` tiap module — jangan diedit manual (§4.1). Aturan alias lengkap: `CONTRACT` §1.5.
+
+## 12. Build & Deployment (Detail)
+
+Model image base + client ada di §8; berikut detail perintah dan perilaku runtime.
+
+**Script `web-container/package.json`:**
+
+| Script | Fungsi |
+| --- | --- |
+| `gen:modules` | regenerate loader map dari `web-modules/modules/*/package.json` |
+| `dev` | dev server; `/config.json` digenerate dari env (§6.2) |
+| `build` | build dengan client dari symlink `current-client` |
+| `build:client` | build untuk client tertentu; env `CLIENT` **wajib** (output `dist/<client>`) |
+| `check:base` | cocokkan `manifest.json:baseVersion` dengan `/app/BASE_VERSION` (§8.3) |
+| `check:dockerfile` | pastikan semua `package.json` sudah di-`COPY` di `Dockerfile` |
+| `test:entrypoint` | uji `entrypoint.sh` (penulisan `/config.json`) |
+| `typecheck`, `test`, `lint` | verifikasi standar sebelum PR |
+
+Pre-hook `predev`, `prebuild`, `prebuild:client`, `pretypecheck`, `pretest` menjalankan `gen:modules` otomatis; jangan panggil `vite build` langsung agar loader map tidak stale.
+
+**Dockerfile root** (multi-target; rincian §8.1): `builder` (Node 22 + source + `node_modules` + `/app/BASE_VERSION`), `base-app` (build default `client: base`), `runtime` (nginx 1.27 + `dist/base` + `nginx.conf` + entrypoint). Modul baru wajib menambah baris `COPY` package.json-nya; `check:dockerfile` yang menjaga.
+
+**Entrypoint & nginx.** Saat container start, `entrypoint.sh` menulis `/config.json` dari env `VITE_*` (§6.3). `nginx.conf` melayani SPA:
+
+| Lokasi | Perilaku | Alasan |
+| --- | --- | --- |
+| `location = /config.json` | `Cache-Control: no-store` | config runtime tidak boleh di-cache antar-deploy |
+| `location /assets/` | `expires 1y` + `public, immutable` | nama file ber-hash, aman di-cache lama |
+| `location /` | `try_files $uri $uri/ /index.html` | deep link SPA diarahkan ke `index.html` |
+
+Langkah operasional lengkap (build, push, run, smoke test, rollback): `DEPLOYMENT-GUIDE` Tutorial A (laptop), Tutorial B (Ubuntu server), Tutorial C (Azure CI/CD).
+
+## 13. Governance, Workflow PR, Versioning
+
+**Ownership.** Platform team memiliki repo base; developer klien memiliki repo extension dan **boleh membaca** base tanpa mengubahnya (§2.1). Kebutuhan yang menyentuh base diusulkan lewat PR ke platform team.
+
+**Alur PR** (berlaku di semua repo):
+
+1. Branch dari `main` repo masing-masing; jaga perubahan tetap kecil.
+2. Jalankan `typecheck`, `test`, `lint` (tambah `check:dockerfile` bila menyentuh module/Dockerfile).
+3. Buka PR dengan deskripsi + checklist `CONTRACT` §20; CI menjalankan verifikasi yang sama.
+4. Perubahan public API, naming convention, atau layer rules **wajib** diskusi lead dev lebih dulu (`CONTRACT` §19.2).
+5. Merge setelah review; image client dibangun ulang lewat pipeline klien (§8.2).
+
+**Versioning.** Container, shared, module, dan extension memakai semver (skema `major.minor.patch`); perubahan breaking pada public API mana pun = **major**. Tiap extension mengunci `baseVersion` secara exact dan mendeklarasikan module yang dipakainya di `manifest.json`; adopsi base baru = PR menaikkan `baseVersion` (§8.3). Menghapus API publik lama juga breaking — tidak ada mekanisme deprecation bertahap, jadi jangan menghapus API yang masih dipakai extension. Aturan lengkap: `CONTRACT` §16 dan §19.
+
+## 14. Anti-Patterns
+
+Kesalahan yang paling sering terjadi, beserta penggantinya.
+
+| ❌ Jangan | ✅ Lakukan |
+| --- | --- |
+| Module meng-import module lain | Komunikasi lewat event bus (§10.3) atau API dari `public.ts` module itu |
+| Extension menulis `if (client === 'client-a')` di kode base | Slot/override di extension; base tidak pernah tahu nama klien |
+| Hardcode URL backend di kode | `deps.api`/service + config runtime (`deps.config`) |
+| Menyimpan secret di env `VITE_*` | Secret di manajemen secret host; config image hanya data publik |
+| Mengedit `moduleLoaders.generated.ts` manual | `npm run gen:modules` (sudah otomatis lewat pre-hook) |
+| `routes.override` tanpa guard `routes.has` untuk module opsional | Cek `has` dulu, lewati + `logger.warn` (`CONTRACT` §12.4) |
+| Register service/event/slot di top-level module | Register di dalam `init(deps)` |
+| Service mengakses `deps`, React, atau React Query | Factory function yang menerima axios instance |
+| Module/extension membuat `QueryClient`, i18n, atau toast sendiri | Pakai instance dari container |
+| Import langsung `axios`, `sonner`, `i18next`, `components/ui/*` | Lewat `@arsi/container` dan `@arsi/shared` |
+| Membaca `import.meta.env` atau fetch `/config.json` di module/extension | `deps.config` atau `useConfig()` |
+| Module/extension mendefinisikan konfigurasi Tailwind sendiri | Tambahkan komponen/utility ke shared |
+
+Daftar lengkap beserta alasannya: `CONTRACT` §20 dan sub-bab anti-pattern di tiap bab `CONTRACT`.
+
+## 15. Roadmap
+
+Item dari ARCHITECTURE lama §21 yang **belum** selesai; item yang sudah jadi (Fase 1 fondasi, module `product-management`, contract test public API, sampel override + service wrapper client-a, correlation ID) tidak diulang di sini. Urutan bukan komitmen waktu.
+
+**Fase 2 — Scale (berjalan)**
+
+- ⬜ ESLint boundaries plugin untuk menegakkan arah dependensi otomatis.
+- ⬜ Keycloak RBAC + navigasi DB-driven — rencana di `docs/phase.02-rbac-navigation.md`, implementasi ditunda.
+- ⬜ Error reporting terpusat (mis. Sentry); correlation ID (`X-Request-Id`, `X-Correlation-Id`) sudah berjalan di `createApi.ts`.
+- ⬜ Health check endpoint di service backend.
+
+**Fase 3 — Production hardening**
+
+- ⬜ Release train + kebijakan versioning formal (semver sudah jalan, ritme rilis belum).
+- ⬜ Bab error handling di `CONTRACT`.
+- ⬜ Pipeline Azure final (`azure-pipelines.yml`) untuk base dan client.
+- ⬜ Performance budget (ukuran bundle per module).
+
+**Fase 4 — Long-term (evaluasi)**
+
+- ⬜ Migrasi dari path mapping ke package registry bila jumlah module menuntut.
+- ⬜ Contract test otomatis di CI untuk setiap module yang di-override.
+- ⬜ Automated dependency upgrade.
+- ⬜ Micro-frontend — hanya bila kebutuhan isolasi runtime nyata muncul.

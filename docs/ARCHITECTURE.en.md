@@ -641,3 +641,218 @@ flowchart LR
 Once the client image exists, it behaves like the base at runtime: the entrypoint writes `/config.json` from env at container start (§6.3), so the same image can serve several environments.
 
 Full operational steps — build, push, run, smoke test — live in `DEPLOYMENT-GUIDE`: **Tutorial A** (deploy on a local laptop), **Tutorial B** (deploy on an Ubuntu server), and **Tutorial C** (deploy via Azure CI/CD).
+
+---
+
+## Part II — Reference
+
+Part I builds the mental model; Part II is a **working reference**: a summary of each mechanism with pointers to its normative rules. The code in this repo is the final word, mandatory rules live in `CONTRACT`, and hands-on steps live in `DEVELOPER-GUIDE`.
+
+## 9. Layers & Dependency Rules
+
+There are four code layers — container, shared, module, extension — and **dependencies may only flow one way, downward**: the extension knows the base, the base never knows the extension or modules directly.
+
+```mermaid
+flowchart TD
+    E[Extension] --> M[Module] & C[Container] & S[Shared]
+    M --> C & S
+    C -.->|discover via config, not import| M
+```
+
+| Rule | Meaning |
+| --- | --- |
+| Container never imports modules/extensions | Modules are discovered from `config.modules` through the loader map (§4.1) |
+| Modules never import other modules | Communicate through the event bus (§10.3); import genuinely public APIs from that module's `public.ts` |
+| Shared never imports container/modules | `@arsi/shared` is pure components/hooks/utils |
+| Container stays self-contained | The container must not import `@arsi/shared`; shell styling uses its own tokens (`CONTRACT` §9.4) |
+| Imports only from public APIs | `@arsi/container`, `@arsi/shared`, and a module's `public.ts` (`CONTRACT` §1.4) |
+
+Full rules and the dependency matrix: `CONTRACT` §1; how to access services outside and inside the React tree: `CONTRACT` §2.
+
+## 10. State, Data Fetching, Events, UI
+
+The six patterns below appear in almost every module. In `init(deps)` use the `deps` object; inside components use hooks from `@arsi/container` (`CONTRACT` §2.1).
+
+### 10.1 Per-module state — Zustand
+
+Each module owns its store for **UI state** (filters, page, selected item); the container owns the global stores (`auth`, `theme`, `locale`). A module store is exported through `public.ts` so extensions may use it — other modules still may not.
+
+```ts
+// web-modules/modules/user-management/store/useUserStore.ts:16
+export const useUserStore = create<UserUiState>()(
+  devtools(
+    persist((set) => ({ search: '', page: 1, /* ... */ }), { name: 'module:user-management' }),
+    { name: 'user-management', enabled: isDev },
+  ),
+);
+```
+
+Persist keys must be namespaced `<layer>:<name>`. Full rules: `CONTRACT` §3.
+
+### 10.2 Data fetching — React Query + service factory
+
+API data → React Query; pure UI state → Zustand. A service must be a *factory function* — it takes an axios instance and returns the service object — so it never touches `deps` and is easy to test.
+
+```ts
+// web-modules/modules/user-management/hooks/useUser.ts
+const api = useApi();
+const service = useMemo(() => createUserService(api), [api]);
+return useQuery({ queryKey: userKeys.list(params), queryFn: () => service.list(params) });
+```
+
+Per-module query keys live in `queryKeys.ts`, are namespaced, and are exported through `public.ts` so extensions can invalidate the cache. Only the container creates the `QueryClient`; every mutation invalidates the relevant keys. Full rules: `CONTRACT` §5.
+
+### 10.3 Event bus — cross-module communication
+
+Senders call `emit(name, payload)`; listeners register with `on(name, handler)`, and neither side knows the other. Event names are namespaced `<module>.<entity>.<action>`; payload types are exported through `public.ts`.
+
+```ts
+// module sends
+events.emit(userEvents.updated, { id, changes });
+// extension listens (registered in init)
+deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
+  void deps.queryClient.invalidateQueries({ queryKey: userKeys.detail(payload.id) });
+});
+```
+
+Modules must not listen to extension events. Full rules: `CONTRACT` §13.
+
+### 10.4 i18n — one namespace per module
+
+Each module registers its `en`/`id` bundles under its own namespace; extensions may override a module bundle with a *deep merge* (matching keys are overwritten, the rest kept) but not the container's built-in namespaces without agreement. UI text always uses i18n keys, never hardcoded strings.
+
+```ts
+deps.i18n.addResourceBundle('en', 'user-management', en);
+const { t } = useTranslation('user-management');
+```
+
+Full rules: `CONTRACT` §6.
+
+### 10.5 Toast, modal, notifications
+
+Three feedback channels owned by the container: `toast` (transient messages), `modal` (dialogs that receive `{ payload, close }`), and `notifications` (the persistent bell in the Topbar). Modal names are namespaced `<module>.<action>` and registered in `init`, not in a component.
+
+```ts
+deps.modal.register(sampleModals.info, SampleInfoModal);
+deps.modal.open(sampleModals.info, payload);
+toast.success(t('create.success')); // from useToast()
+```
+
+Full rules: `CONTRACT` §7–§8.
+
+### 10.6 UI kit & styling
+
+Shared UI components live in `web-modules/shared` and are imported from `@arsi/shared`; modules/extensions must not import `components/ui/*` directly or create their own Tailwind config. Components that are very module-specific may stay in the module. The container is **self-contained**: it does not import `@arsi/shared` and uses its own color tokens (ARSI Purple `#551AB9` in CSS variables). Adding a component:
+
+```bash
+cd web-modules/shared && npx shadcn@latest add <component>
+```
+
+Full rules: `CONTRACT` §9–§10.
+
+## 11. Path Mapping & Aliases
+
+Cross-package imports use aliases instead of relative paths. Two definitions must stay in sync: `web-container/aliases.cjs` (used by Vite) and `web-container/tsconfig.json:paths` (used by TypeScript/ESLint, since tsconfig cannot read `.cjs`).
+
+| Alias | Resolves to | Used by |
+| --- | --- | --- |
+| `@arsi/container` | `web-container/src/public/index.ts` | modules & extensions |
+| `@arsi/shared` | `web-modules/shared/index.ts` | modules & extensions |
+| `@arsi/module-*` | `web-modules/modules/*/public.ts` | extensions (module contract) |
+| `@arsi/module-*/entry` | `web-modules/modules/*/index.tsx` | container loader map (§4.1) |
+| `@arsi/extension` | `web-container/current-client/src/index.tsx` | container (active extension) |
+
+Both `@arsi/module-*` patterns are **wildcards** (a `*` pattern matching any module name): adding a module requires no alias changes. Order matters — the `/entry` pattern is written before the base pattern so the base pattern does not capture it (`aliases.cjs:9-15`). `current-client` is a symlink to the active extension (dev: `CLIENT=client-a npm run link:client`; in the builder image it points to `/app/extension`).
+
+The loader map `web-container/src/bootstrap/moduleLoaders.generated.ts` is generated by `npm run gen:modules` from each module's `package.json` — never edit it manually (§4.1). Full alias rules: `CONTRACT` §1.5.
+
+## 12. Build & Deployment (Details)
+
+The base + client image model is in §8; this section covers commands and runtime behavior.
+
+**Scripts in `web-container/package.json`:**
+
+| Script | Purpose |
+| --- | --- |
+| `gen:modules` | regenerate the loader map from `web-modules/modules/*/package.json` |
+| `dev` | dev server; `/config.json` is generated from env (§6.2) |
+| `build` | build using the client from the `current-client` symlink |
+| `build:client` | build for a specific client; env `CLIENT` is **required** (output `dist/<client>`) |
+| `check:base` | compare `manifest.json:baseVersion` with `/app/BASE_VERSION` (§8.3) |
+| `check:dockerfile` | ensure every `package.json` is `COPY`ed in the `Dockerfile` |
+| `test:entrypoint` | test `entrypoint.sh` (`/config.json` writing) |
+| `typecheck`, `test`, `lint` | standard verification before a PR |
+
+Pre-hooks `predev`, `prebuild`, `prebuild:client`, `pretypecheck`, `pretest` run `gen:modules` automatically; do not call `vite build` directly or the loader map may go stale.
+
+**Root Dockerfile** (multi-target; details in §8.1): `builder` (Node 22 + sources + `node_modules` + `/app/BASE_VERSION`), `base-app` (builds the default `client: base`), `runtime` (nginx 1.27 + `dist/base` + `nginx.conf` + entrypoint). A new module must add its `COPY` line; `check:dockerfile` enforces this.
+
+**Entrypoint & nginx.** On container start, `entrypoint.sh` writes `/config.json` from the `VITE_*` env (§6.3). `nginx.conf` serves the SPA:
+
+| Location | Behavior | Why |
+| --- | --- | --- |
+| `location = /config.json` | `Cache-Control: no-store` | runtime config must not be cached across deploys |
+| `location /assets/` | `expires 1y` + `public, immutable` | hashed filenames are safe to cache for long |
+| `location /` | `try_files $uri $uri/ /index.html` | SPA deep links fall back to `index.html` |
+
+Full operational steps (build, push, run, smoke test, rollback): `DEPLOYMENT-GUIDE` Tutorial A (laptop), Tutorial B (Ubuntu server), Tutorial C (Azure CI/CD).
+
+## 13. Governance, PR Workflow, Versioning
+
+**Ownership.** The platform team owns the base repo; client developers own the extension repo and **may read** the base without changing it (§2.1). Needs that touch the base are proposed through a PR to the platform team.
+
+**PR flow** (every repo):
+
+1. Branch from `main` in the relevant repo; keep the change small.
+2. Run `typecheck`, `test`, `lint` (add `check:dockerfile` when touching modules/Dockerfile).
+3. Open the PR with a description + the `CONTRACT` §20 checklist; CI runs the same verification.
+4. Changes to public APIs, naming conventions, or layer rules **require** lead-dev discussion first (`CONTRACT` §19.2).
+5. Merge after review; the client image is rebuilt by the client pipeline (§8.2).
+
+**Versioning.** Container, shared, modules, and extensions use semver (the `major.minor.patch` scheme); a breaking change to any public API = **major**. Every extension pins `baseVersion` exactly and declares the modules it uses in `manifest.json`; adopting a new base = a PR bumping `baseVersion` (§8.3). Removing an old public API is breaking too — there is no gradual deprecation mechanism, so never remove an API an extension still uses. Full rules: `CONTRACT` §16 and §19.
+
+## 14. Anti-Patterns
+
+The most common mistakes, with their replacements.
+
+| ❌ Don't | ✅ Do |
+| --- | --- |
+| A module imports another module | Communicate via the event bus (§10.3) or that module's `public.ts` API |
+| An extension writes `if (client === 'client-a')` in base code | Use slots/overrides in the extension; the base never knows client names |
+| Hardcode backend URLs in code | `deps.api`/services + runtime config (`deps.config`) |
+| Store secrets in `VITE_*` env | Keep secrets in the host's secret manager; image config is public data only |
+| Edit `moduleLoaders.generated.ts` by hand | `npm run gen:modules` (already automatic via pre-hooks) |
+| Call `routes.override` without a `routes.has` guard for optional modules | Check `has` first, skip + `logger.warn` (`CONTRACT` §12.4) |
+| Register services/events/slots at module top level | Register inside `init(deps)` |
+| A service accesses `deps`, React, or React Query | A factory function that takes an axios instance |
+| Module/extension creates its own `QueryClient`, i18n, or toast | Use the container instances |
+| Import `axios`, `sonner`, `i18next`, `components/ui/*` directly | Go through `@arsi/container` and `@arsi/shared` |
+| Read `import.meta.env` or fetch `/config.json` in a module/extension | Use `deps.config` or `useConfig()` |
+| Module/extension defines its own Tailwind config | Add components/utilities to shared |
+
+The complete list with rationale: `CONTRACT` §20 and the per-topic anti-pattern subsections in `CONTRACT`.
+
+## 15. Roadmap
+
+Items from the old ARCHITECTURE §21 that are **not done yet**; finished ones (phase 1 foundation, `product-management`, public-API contract tests, the client-a override + service wrapper samples, correlation ID) are not repeated here. Order is not a time commitment.
+
+**Phase 2 — Scale (in progress)**
+
+- ⬜ ESLint boundaries plugin to enforce the dependency direction automatically.
+- ⬜ Keycloak RBAC + DB-driven navigation — plan in `docs/phase.02-rbac-navigation.md`, implementation postponed.
+- ⬜ Centralized error reporting (e.g. Sentry); correlation ID (`X-Request-Id`, `X-Correlation-Id`) already runs in `createApi.ts`.
+- ⬜ Health check endpoint in backend services.
+
+**Phase 3 — Production hardening**
+
+- ⬜ Release train + formal versioning policy (semver already works, release cadence does not).
+- ⬜ Error handling chapter in `CONTRACT`.
+- ⬜ Final Azure pipeline (`azure-pipelines.yml`) for base and client.
+- ⬜ Performance budget (bundle size per module).
+
+**Phase 4 — Long-term (evaluation)**
+
+- ⬜ Migrate from path mapping to a package registry if the module count demands it.
+- ⬜ Automated contract tests in CI for every overridden module.
+- ⬜ Automated dependency upgrade.
+- ⬜ Micro-frontend — only if a real runtime-isolation need appears.
