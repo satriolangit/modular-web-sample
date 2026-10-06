@@ -2,10 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Deps } from '../di/deps';
 import {
+  fetchRegistry,
   loadInstalledModule,
   parseRegistry,
   resolveRegistryUrl,
 } from './runtimeModules';
+
+const okFetch = (text = '{}') =>
+  (async () => ({ ok: true, status: 200, text: async () => text })) as unknown as typeof fetch;
 
 const baseModule = {
   version: '0.1.0',
@@ -40,8 +44,50 @@ describe('resolveRegistryUrl', () => {
   });
 });
 
+describe('fetchRegistry', () => {
+  it('mengembalikan null untuk 404 (deployment tanpa registry)', async () => {
+    const result = await fetchRegistry(
+      'http://localhost/registry.json',
+      (async () => ({ ok: false, status: 404 })) as unknown as typeof fetch,
+    );
+    expect(result).toBeNull();
+  });
+
+  it('gagal dengan pesan status untuk non-OK selain 404', async () => {
+    await expect(
+      fetchRegistry(
+        'http://localhost/registry.json',
+        (async () => ({ ok: false, status: 500 })) as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow('[runtime-module] registry request failed: 500');
+  });
+
+  it('parse registry saat response OK', async () => {
+    const result = await fetchRegistry(
+      'http://localhost/registry.json',
+      (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ apiVersion: 1, modules: { demo: baseModule } }),
+      })) as unknown as typeof fetch,
+    );
+    expect(result?.modules.demo.version).toBe('0.1.0');
+  });
+});
+
 describe('loadInstalledModule', () => {
   const deps = {} as Deps;
+
+  it('gagal dengan pesan manifest request (bukan integrity) untuk non-OK', async () => {
+    await expect(
+      loadInstalledModule({
+        name: 'demo',
+        module: baseModule,
+        deps,
+        fetchImpl: (async () => ({ ok: false, status: 500 })) as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow('[runtime-module] manifest request failed: 500');
+  });
 
   it('gagal bila apiVersion tidak cocok', async () => {
     await expect(
@@ -55,7 +101,7 @@ describe('loadInstalledModule', () => {
         name: 'demo',
         module: baseModule,
         deps,
-        fetchImpl: (async () => ({ text: async () => '{}' })) as unknown as typeof fetch,
+        fetchImpl: okFetch(),
         verifyIntegrityImpl: async () => false,
       }),
     ).rejects.toThrow(/integrity/);
@@ -69,7 +115,7 @@ describe('loadInstalledModule', () => {
       name: 'demo',
       module: baseModule,
       deps,
-      fetchImpl: (async () => ({ text: async () => '{}' })) as unknown as typeof fetch,
+      fetchImpl: okFetch(),
       verifyIntegrityImpl: async () => true,
       registerRemotesImpl,
       loadRemoteImpl: async (request) => {

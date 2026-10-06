@@ -39,14 +39,29 @@ export async function discover(deps: Deps, options: DiscoverOptions = {}): Promi
   for (const moduleName of deps.config.modules) {
     const load = moduleLoaders[moduleName];
     if (load) {
+      if (registry?.modules[moduleName]) {
+        deps.logger.debug(
+          `module "${moduleName}" built-in precedence: registry entry ${registry.modules[moduleName].version} ignored`,
+        );
+      }
       const entry = await load();
       await entry.default(deps);
       deps.logger.info(`module "${moduleName}" initialized (built-in)`);
       continue;
     }
 
-    const installed = registry?.modules[moduleName];
-    if (installed && installed.enabled !== false) {
+    if (registry === null) {
+      deps.logger.warn(`module "${moduleName}" unavailable: registry not reachable; skipped`);
+      continue;
+    }
+
+    const installed = registry.modules[moduleName];
+    if (installed && installed.enabled === false) {
+      deps.logger.warn(`module "${moduleName}" disabled in registry; skipped`);
+      continue;
+    }
+
+    if (installed) {
       try {
         await loadInstalledModule({
           name: moduleName,

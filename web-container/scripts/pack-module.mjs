@@ -40,8 +40,16 @@ writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 const integrity = `sha384-${createHash('sha384').update(readFileSync(mfManifestPath)).digest('base64')}`;
 const zipName = `${name}-${pkg.version}.zip`;
 
-const zip = spawnSync('zip', ['-qr', zipName, name], {
-  cwd: path.join(root, 'dist', 'modules'),
+const runtimeMembers = [
+  'manifest.json',
+  'mf-manifest.json',
+  'remoteEntry.js',
+  ...(existsSync(path.join(distDir, 'module.css')) ? ['module.css'] : []),
+  'assets',
+];
+
+const zip = spawnSync('zip', ['-qr', `../${zipName}`, ...runtimeMembers], {
+  cwd: distDir,
   stdio: 'inherit',
 });
 if (zip.status !== 0) {

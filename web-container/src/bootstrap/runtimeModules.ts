@@ -55,7 +55,10 @@ export async function fetchRegistry(
   fetchImpl: typeof fetch = fetch,
 ): Promise<RegistryFile | null> {
   const response = await fetchImpl(url, { cache: 'no-store' });
-  if (!response.ok) return null;
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`[runtime-module] registry request failed: ${response.status}`);
+  }
   return parseRegistry(await response.json());
 }
 
@@ -109,6 +112,11 @@ export async function loadInstalledModule(options: LoadInstalledModuleOptions): 
     );
   }
   const response = await (options.fetchImpl ?? fetch)(module.manifest, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(
+      `[runtime-module] manifest request failed: ${response.status} (${module.manifest})`,
+    );
+  }
   const manifestText = await response.text();
   const valid = await (options.verifyIntegrityImpl ?? verifySha384)(manifestText, module.integrity);
   if (!valid) {

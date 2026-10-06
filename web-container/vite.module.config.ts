@@ -22,6 +22,7 @@ const shared = {
 };
 
 export default defineConfig({
+  publicDir: false,
   plugins: [
     react(),
     federation({

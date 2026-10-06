@@ -54,10 +54,10 @@ async function assertPortFree(url) {
   }
 }
 
-async function waitForLog(logs, pattern, timeoutMs = 10000) {
+async function waitForLog(logs, pattern, timeoutMs = 10000, from = 0) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (logs.some((line) => pattern.test(line))) return true;
+    if (logs.slice(from).some((line) => pattern.test(line))) return true;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return false;
@@ -149,6 +149,9 @@ async function main() {
     const styled = await page.$eval('[data-testid="runtime-demo-client"]', (el) =>
       getComputedStyle(el).fontSize,
     );
+    if (parseFloat(styled) !== 14) {
+      throw new Error(`Tailwind text-sm tidak teraplikasi pada module: fontSize=${styled}`);
+    }
     if (errors.length > 0) {
       throw new Error(`page errors: ${errors.join(' | ')}`);
     }
@@ -163,11 +166,24 @@ async function main() {
 
     // Kasus negatif: integritas salah → module ditolak, app tetap boot.
     registry.modules[name].integrity = 'sha384-INVALID';
+    const logsBeforeReload = logs.length;
     await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForSelector('text=Runtime Demo Module', { timeout: 3000 }).catch(() => {});
-    const rejected = await waitForLog(logs, /gagal dimuat dari registry/);
+    const rejected = await waitForLog(logs, /gagal dimuat dari registry/, 10000, logsBeforeReload);
     if (!rejected) {
-      throw new Error('log penolakan "gagal dimuat dari registry" tidak muncul');
+      throw new Error('log penolakan "gagal dimuat dari registry" tidak muncul setelah reload');
+    }
+    const rebooted = await waitForLog(
+      logs,
+      /extension for client|initialized \(built-in\)/,
+      10000,
+      logsBeforeReload,
+    );
+    if (!rebooted) {
+      throw new Error('log boot ulang host tidak muncul setelah reload');
+    }
+    const rendered = await page.locator('[data-testid="runtime-demo-client"]').count();
+    if (rendered !== 0) {
+      throw new Error(`module tetap ter-render setelah integritas salah (count=${rendered})`);
     }
     if (errors.length > 0) {
       throw new Error(`page errors: ${errors.join(' | ')}`);
