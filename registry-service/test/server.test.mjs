@@ -57,4 +57,43 @@ describe('registry service', () => {
     const res = await fetch(`${base}/api/modules`);
     expect(res.status).toBe(401);
   });
+
+  it('preflight CORS /api diizinkan untuk admin API', async () => {
+    const { server, base } = await startApp(testConfig());
+    running.push(server);
+    const res = await fetch(`${base}/api/modules`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Access-Control-Request-Method': 'PATCH',
+        'Access-Control-Request-Headers': 'authorization,content-type',
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('access-control-allow-methods')).toContain('PATCH');
+    expect(res.headers.get('access-control-allow-headers').toLowerCase()).toContain(
+      'authorization',
+    );
+  });
+
+  it('respons /api menyertakan Access-Control-Allow-Origin', async () => {
+    const { server, base } = await startApp(testConfig());
+    running.push(server);
+    const res = await fetch(`${base}/api/modules`, {
+      headers: { Origin: 'http://localhost:5173' },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('CORS_ORIGIN dipakai di /api dan preflight', async () => {
+    const { server, base } = await startApp(testConfig({ CORS_ORIGIN: 'http://localhost:5173' }));
+    running.push(server);
+    const res = await fetch(`${base}/api/modules`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'http://localhost:5173' },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+  });
 });
