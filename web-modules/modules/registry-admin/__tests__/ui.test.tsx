@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-i18next', () => ({
@@ -13,7 +13,7 @@ import { ModuleStatusBadge } from '../components/ModuleStatusBadge';
 import { ModuleTable } from '../components/ModuleTable';
 import { TokenBar } from '../components/TokenBar';
 import { UploadCard } from '../components/UploadCard';
-import { createRegistryAdminService } from '../services/service.registryAdmin';
+import { createRegistryAdminService, resolveActionError } from '../services/service.registryAdmin';
 
 const moduleSummary = {
   name: 'demo-module',
@@ -47,6 +47,21 @@ describe('createRegistryAdminService', () => {
   });
 });
 
+describe('resolveActionError', () => {
+  it('memprioritaskan detail error dari server', () => {
+    expect(
+      resolveActionError({
+        response: { data: { error: 'Token admin tidak valid.' } },
+        message: 'Request failed with status code 401',
+      }),
+    ).toBe('Token admin tidak valid.');
+  });
+
+  it('fallback ke message error', () => {
+    expect(resolveActionError(new Error('Network Error'))).toBe('Network Error');
+  });
+});
+
 describe('ModuleStatusBadge', () => {
   it('menampilkan status', () => {
     render(<ModuleStatusBadge enabled />);
@@ -75,7 +90,7 @@ describe('UploadCard', () => {
 });
 
 describe('ModuleTable', () => {
-  it('render baris + aksi toggle/delete', () => {
+  it('render baris + aksi toggle/delete dengan konfirmasi', () => {
     const onToggle = vi.fn();
     const onDelete = vi.fn();
     render(<ModuleTable modules={[moduleSummary]} onToggle={onToggle} onDelete={onDelete} />);
@@ -84,7 +99,19 @@ describe('ModuleTable', () => {
     fireEvent.click(screen.getByRole('button', { name: 'actions.disable' }));
     expect(onToggle).toHaveBeenCalledWith('demo-module', false);
     fireEvent.click(screen.getByRole('button', { name: 'actions.delete' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'actions.delete' }),
+    );
     expect(onDelete).toHaveBeenCalledWith('demo-module');
+  });
+
+  it('menonaktifkan aksi saat sibuk', () => {
+    render(
+      <ModuleTable modules={[moduleSummary]} onToggle={() => {}} onDelete={() => {}} busy />,
+    );
+    expect(screen.getByRole('button', { name: 'actions.disable' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'actions.delete' })).toBeDisabled();
   });
 
   it('empty state saat kosong', () => {

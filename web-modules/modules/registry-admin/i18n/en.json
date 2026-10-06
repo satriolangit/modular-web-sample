@@ -30,11 +30,13 @@
     "enable": "Enable",
     "disable": "Disable",
     "delete": "Delete",
+    "cancel": "Cancel",
     "deleteConfirm": "Delete module {{name}}? This removes its files."
   },
   "errors": {
     "notConfigured": "registryAdminUrl is not configured for this deployment.",
     "unauthorized": "Invalid admin token.",
-    "load": "Failed to load modules: {{message}}"
+    "load": "Failed to load modules: {{message}}",
+    "action": "Action failed: {{message}}"
   }
 }

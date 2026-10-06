@@ -42,4 +42,17 @@ describe('registry-admin init', () => {
     expect(deps.apiRegistry.register).not.toHaveBeenCalled();
     expect(deps.routes.add).toHaveBeenCalled();
   });
+
+  it('idempoten saat dipanggil dua kali', async () => {
+    const deps = createFakeDeps();
+    const init = await loadInit();
+
+    await init(deps);
+    await init(deps);
+
+    expect(deps.apiRegistry.register).toHaveBeenCalledTimes(1);
+    expect(deps.routes.add).toHaveBeenCalledTimes(1);
+    expect(deps.menu.register).toHaveBeenCalledTimes(1);
+    expect(deps.i18n.addResourceBundle).toHaveBeenCalledTimes(2);
+  });
 });

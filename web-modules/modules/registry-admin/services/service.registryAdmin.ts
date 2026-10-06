@@ -2,6 +2,14 @@ import type { AxiosInstance } from 'axios';
 
 import type { RegistryModuleSummary, UploadResult } from '../types';
 
+export function resolveActionError(error: unknown): string {
+  const { response, message } = (error ?? {}) as {
+    response?: { data?: { error?: string } };
+    message?: string;
+  };
+  return response?.data?.error ?? message ?? String(error);
+}
+
 export function createRegistryAdminService(api: AxiosInstance) {
   return {
     async list(): Promise<RegistryModuleSummary[]> {

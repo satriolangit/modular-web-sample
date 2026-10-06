@@ -7,6 +7,7 @@ import { TokenBar } from '../components/TokenBar';
 import { UploadCard } from '../components/UploadCard';
 import { REGISTRY_ADMIN_TOKEN_KEY } from '../constants';
 import { useRegistryAdmin } from '../hooks/useRegistryAdmin';
+import { resolveActionError } from '../services/service.registryAdmin';
 
 export function ModuleRegistryPage() {
   const { t } = useTranslation('registry-admin');
@@ -79,8 +80,22 @@ function ModuleRegistryContent({
       ) : (
         <ModuleTable
           modules={modulesQuery.data ?? []}
-          onToggle={(name, enabled) => toggleMutation.mutate({ name, enabled })}
-          onDelete={(name) => deleteMutation.mutate(name)}
+          busy={toggleMutation.isPending || deleteMutation.isPending}
+          onToggle={(name, enabled) =>
+            toggleMutation.mutate(
+              { name, enabled },
+              {
+                onError: (error) =>
+                  toast.error(t('errors.action', { message: resolveActionError(error) })),
+              },
+            )
+          }
+          onDelete={(name) =>
+            deleteMutation.mutate(name, {
+              onError: (error) =>
+                toast.error(t('errors.action', { message: resolveActionError(error) })),
+            })
+          }
         />
       )}
     </div>

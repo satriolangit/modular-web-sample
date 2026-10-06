@@ -30,11 +30,13 @@
     "enable": "Aktifkan",
     "disable": "Nonaktifkan",
     "delete": "Hapus",
+    "cancel": "Batal",
     "deleteConfirm": "Hapus module {{name}}? File-nya ikut terhapus."
   },
   "errors": {
     "notConfigured": "registryAdminUrl belum dikonfigurasi untuk deployment ini.",
     "unauthorized": "Token admin tidak valid.",
-    "load": "Gagal memuat module: {{message}}"
+    "load": "Gagal memuat module: {{message}}",
+    "action": "Aksi gagal: {{message}}"
   }
 }

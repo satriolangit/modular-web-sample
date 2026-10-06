@@ -6,7 +6,14 @@ import en from './i18n/en.json';
 import id from './i18n/id.json';
 import { ModuleRegistryPage } from './pages/ModuleRegistryPage';
 
+let initialized = false;
+
 export default async function init(deps: Deps): Promise<void> {
+  if (initialized) {
+    return;
+  }
+  initialized = true;
+
   deps.i18n.addResourceBundle('en', 'registry-admin', en, true, true);
   deps.i18n.addResourceBundle('id', 'registry-admin', id, true, true);
 

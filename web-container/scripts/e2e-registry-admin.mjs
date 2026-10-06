@@ -171,8 +171,11 @@ async function main() {
     );
     await row.getByRole('button', { name: /enable/i }).waitFor({ timeout: 15000 });
 
-    // delete
+    // delete (dengan konfirmasi)
     await row.getByRole('button', { name: /delete/i }).click();
+    const dialog = page.getByRole('alertdialog');
+    await dialog.waitFor({ timeout: 15000 });
+    await dialog.getByRole('button', { name: /delete/i }).click();
     await waitForRegistry((registry) => !registry.modules[MODULE_NAME], 'delete menghapus module');
     await row.waitFor({ state: 'detached', timeout: 15000 });
 

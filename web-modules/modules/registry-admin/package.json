@@ -5,6 +5,7 @@
   "type": "module",
   "sideEffects": false,
   "dependencies": {
+    "@arsi/shared": "^0.1.0",
     "axios": "~1.7.9"
   },
   "peerDependencies": {
