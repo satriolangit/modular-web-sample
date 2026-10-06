@@ -2,7 +2,7 @@
 
 **Version**: 0.2.0
 **Audience**: DevOps / platform engineer
-**Terkait**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; panduan end-to-end: `ZERO-TO-DEPLOY-GUIDE.md`
+**Terkait**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; `MODULE-REGISTRY-GUIDE.md`; panduan end-to-end: `ZERO-TO-DEPLOY-GUIDE.md`
 **Target deployment saat ini**: **Docker** — base dibangun sekali menjadi image `arsi-web-base`, lalu tiap extension membangun satu image client `FROM` base image tersebut. Config di-inject saat container start.
 
 > English version: `DEPLOYMENT-GUIDE.en.md`.
@@ -262,12 +262,13 @@ Panduan runtime produksi lengkap di VM Linux (install Docker, TLS Let's Encrypt,
 | `VITE_MODULES` | `user-management` | CSV modul yang **di-init** saat runtime (contoh: `user-management,product-management,module-sample`) |
 | `VITE_API_BASE` | `https://dummyjson.com` | Base URL API untuk `deps.api` dan service modul |
 | `VITE_ENABLE_AUDIT_LIVE` | `true` | Feature flag (`featureFlags.enableAuditLive`) |
-| `VITE_CONFIG_JSON` | — | **Override penuh** `/config.json` (JSON object). Jika diisi, empat env di atas diabaikan. |
+| `VITE_REGISTRY_ADMIN_URL` | — | URL service registry untuk UI admin module (`config.registryAdminUrl`); kosong = halaman `/system/modules` nonaktif. Loader memakai `VITE_REGISTRY_URL` — lihat `MODULE-REGISTRY-GUIDE.md`. |
+| `VITE_CONFIG_JSON` | — | **Override penuh** `/config.json` (JSON object). Jika diisi, lima env di atas diabaikan. |
 
 Catatan penting:
 
 - **Modul harus ada di build** — semua modul di `web-modules/modules/` selalu ter-bundle (lazy chunk); `VITE_MODULES` hanya menentukan mana yang aktif saat runtime. Nama modul **harus sama** dengan nama folder; kalau tidak, app gagal boot dengan `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
-- **Override penuh (CI-friendly)** — `VITE_CONFIG_JSON` menulis `config.json` apa adanya (multiline dipadatkan ke satu baris) dan mengabaikan env individual. Nilai **wajib** object JSON (diawali `{`, diakhiri `}`); kalau tidak, container **gagal start** dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Pakai bila CI perlu mengeset field di luar empat env di atas (mis. feature flag tambahan):
+- **Override penuh (CI-friendly)** — `VITE_CONFIG_JSON` menulis `config.json` apa adanya (multiline dipadatkan ke satu baris) dan mengabaikan env individual. Nilai **wajib** object JSON (diawali `{`, diakhiri `}`); kalau tidak, container **gagal start** dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Pakai bila CI perlu mengeset field di luar lima env di atas (mis. feature flag tambahan):
 
   ```json
   {"client":"bca","modules":["user-management","product-management"],"apiBase":"https://api.bca.example","featureFlags":{"enableAuditLive":false,"newFlag":true}}
@@ -293,6 +294,7 @@ Catatan penting:
   ```
 - Rollback = deploy tag sebelumnya (`TAG=<buildId-sebelumnya> docker compose up -d --force-recreate`).
 - Base dipin per client: image client hanya dibangun terhadap base `<ver>` sesuai `manifest.json:baseVersion`. Jangan retag base lama ke versi baru.
+- Module runtime (upload/enable/delete via `registry-service`, route `/system/modules`) terpisah dari registry Docker di atas — panduan: `MODULE-REGISTRY-GUIDE.md`.
 
 ---
 

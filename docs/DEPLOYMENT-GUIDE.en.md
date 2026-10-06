@@ -2,7 +2,7 @@
 
 **Version**: 0.2.0
 **Audience**: DevOps / platform engineers
-**Related**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; end-to-end guide: `ZERO-TO-DEPLOY-GUIDE.en.md`
+**Related**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; `MODULE-REGISTRY-GUIDE.en.md`; end-to-end guide: `ZERO-TO-DEPLOY-GUIDE.en.md`
 **Current deployment target**: **Docker** — the base is built once into `arsi-web-base` images, then each extension builds one client image `FROM` that base image. Config is injected at container start.
 
 > Indonesian version: `DEPLOYMENT-GUIDE.md`.
@@ -262,12 +262,13 @@ For a complete production runtime guide on a Linux VM (Docker install, TLS with 
 | `VITE_MODULES` | `user-management` | CSV of modules **initialized** at runtime (example: `user-management,product-management,module-sample`) |
 | `VITE_API_BASE` | `https://dummyjson.com` | API base URL for `deps.api` and module services |
 | `VITE_ENABLE_AUDIT_LIVE` | `true` | Feature flag (`featureFlags.enableAuditLive`) |
-| `VITE_CONFIG_JSON` | — | **Full override** of `/config.json` (JSON object). When set, the four variables above are ignored. |
+| `VITE_REGISTRY_ADMIN_URL` | — | Registry service URL for the module admin UI (`config.registryAdminUrl`); empty = `/system/modules` page disabled. The loader uses `VITE_REGISTRY_URL` — see `MODULE-REGISTRY-GUIDE.en.md`. |
+| `VITE_CONFIG_JSON` | — | **Full override** of `/config.json` (JSON object). When set, the five variables above are ignored. |
 
 Important notes:
 
 - **Modules must exist in the build** — every module under `web-modules/modules/` is always bundled (lazy chunk); `VITE_MODULES` only selects which ones are active at runtime. The module name **must match** the folder name; otherwise the app fails to boot with `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
-- **Full override (CI-friendly)** — `VITE_CONFIG_JSON` writes `config.json` verbatim (multiline is compacted to one line) and ignores the individual envs. The value **must** be a JSON object (starts `{`, ends `}`); otherwise the container **fails to start** with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Use it when CI needs fields beyond the four variables above (e.g. extra feature flags):
+- **Full override (CI-friendly)** — `VITE_CONFIG_JSON` writes `config.json` verbatim (multiline is compacted to one line) and ignores the individual envs. The value **must** be a JSON object (starts `{`, ends `}`); otherwise the container **fails to start** with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Use it when CI needs fields beyond the five variables above (e.g. extra feature flags):
 
   ```json
   {"client":"bca","modules":["user-management","product-management"],"apiBase":"https://api.bca.example","featureFlags":{"enableAuditLive":false,"newFlag":true}}
@@ -293,6 +294,7 @@ Important notes:
   ```
 - Rollback = deploy the previous tag (`TAG=<previous-buildId> docker compose up -d --force-recreate`).
 - Base is pinned per client: a client image is only built against the base `<ver>` in `manifest.json:baseVersion`. Do not retag an old base to a new version.
+- Runtime modules (upload/enable/delete via `registry-service`, route `/system/modules`) are separate from the Docker registry above — guide: `MODULE-REGISTRY-GUIDE.en.md`.
 
 ---
 

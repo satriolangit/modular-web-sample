@@ -220,7 +220,8 @@ Rules and gotchas:
 - **API base and CORS.** If the API is on a different origin than the app, the backend must allow that origin (or serve the API under the same domain/path). Check the browser console for CORS errors after deploy.
 - **Changing config** requires recreating the container, not rebuilding the image: `docker compose up -d --force-recreate`.
 - The example compose sets `VITE_ENABLE_AUDIT_LIVE` to `false` when unset (production-safe); the image/entrypoint fallback is `true`. Set it explicitly per environment.
-- **Full override (`VITE_CONFIG_JSON`)** — for CI-driven config beyond the four variables (extra feature flags, future fields). The value must be a JSON object (starts `{`, ends `}`); otherwise the container **fails to start** with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Multiline values are compacted to one line. When set, the individual `VITE_*` values are ignored.
+- **Full override (`VITE_CONFIG_JSON`)** — for CI-driven config beyond the individual `VITE_*` variables (extra feature flags, future fields). The value must be a JSON object (starts `{`, ends `}`); otherwise the container **fails to start** with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Multiline values are compacted to one line. When set, the individual `VITE_*` values are ignored.
+- **Optional module registry** — installable runtime modules (upload, list, enable/disable, delete) need the standalone `registry-service`; when enabled, also set `VITE_REGISTRY_URL` (runtime loader) and `VITE_REGISTRY_ADMIN_URL` (admin UI at `/system/modules`). The service can run on the same VM or elsewhere; without it, the loader falls back to `/modules/registry.json`. See `MODULE-REGISTRY-GUIDE.en.md`.
 
 Example `.env`:
 

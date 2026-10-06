@@ -1020,7 +1020,7 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 | Environment | Sumber                                                  |
 | ----------- | ------------------------------------------------------- |
 | Dev lokal   | dev server env-driven (selaras production); `public/config.json` = fallback |
-| Production  | `/config.json` di-generate entrypoint dari env variable (`VITE_*`; override penuh via `VITE_CONFIG_JSON`) |
+| Production  | `/config.json` di-generate entrypoint dari env variable (`VITE_*`, termasuk `registryAdminUrl` dari `VITE_REGISTRY_ADMIN_URL`; override penuh via `VITE_CONFIG_JSON`) |
 
 ### 14.2 Struktur Config
 
@@ -1044,6 +1044,7 @@ Konstanta (`containerEvents`) dan tipe payload (`ContainerSearchPayload`) di-exp
 - Env variable **tidak boleh** dipakai di modul/extension (`import.meta.env.VITE_*` dilarang).
 - `VITE_CONFIG_JSON` **boleh** dipakai di production untuk override penuh `config.json` (object JSON; env individual diabaikan bila diisi). Ini env **runtime container**, bukan `import.meta.env` — larangan env di modul/extension tetap berlaku.
 - Config **wajib** punya default fallback agar app bisa boot saat gagal fetch.
+- Module core `registry-admin` menyediakan route `/system/modules`; semua aksi manajemen module (upload, enable/disable, delete) **wajib** token service (`ADMIN_TOKEN`) via header `Authorization: Bearer` — visibilitas route bukan kontrol akses (RBAC menyusul di `phase.02-rbac-navigation.md`).
 
 ---
 
@@ -1224,11 +1225,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.7.3
-**Last updated**: 2026-10-03
+**Document version**: 0.7.4
+**Last updated**: 2026-10-06
 
 **Changelog:**
 
+- **0.7.4** — Module registry admin: config `registryAdminUrl` (`VITE_REGISTRY_ADMIN_URL`), module core `registry-admin` (route `/system/modules`, aksi butuh token service) + panduan `MODULE-REGISTRY-GUIDE.md`; §14.1/§14.3 diperbarui.
 - **0.7.3** — Dev env-driven: script generik `dev`/`build` membaca symlink `current-client` (atau `VITE_CLIENT` dari `.env`); `/config.json` dev digenerate dev server dari env (mapping sama dengan production, termasuk `VITE_CONFIG_JSON`); script per-client dihapus; §14.1 diperbarui.
 - **0.7.2** — Struktur repo: extension default `web-extension-base` → `web-extension-default` (package `@arsi/extension-default`); repo client `arsi-web-client-<x>` (checkout `web-extension-client-<x>`, client id `client-<x>`); `web-extension-template` menjadi bagian repo base; script `npm run link:base` untuk base. Aturan §1.6/§15 diperbarui.
 - **0.7.1** — Override penuh `config.json` via env runtime `VITE_CONFIG_JSON` (entrypoint base, validasi fail-fast, env individual diabaikan bila diisi); aturan §14.1/§14.3 diperbarui.
