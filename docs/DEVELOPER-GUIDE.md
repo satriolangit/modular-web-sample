@@ -126,6 +126,7 @@ npm run dev          # http://localhost:5173
 ```
 
 - Config dev digenerate dev server dari env: client dari symlink `current-client` (atau `VITE_CLIENT` di `web-container/.env`, gitignored); `VITE_MODULES` (CSV), `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`, atau `VITE_CONFIG_JSON` (override penuh). `public/config.json` hanya fallback — tidak perlu diubah per client.
+- Opsional: `cp .env.example .env` lalu sesuaikan; sample berisi semua env yang didukung (lihat `web-container/.env.example`).
 - Hot reload untuk perubahan `web-modules/` dan extension aktif.
 - **Restart** dev server setelah: menambah module (loader map di-generate) atau mengganti client (symlink berubah).
 - Cek cepat: halaman login tampil, menu sesuai `modules` di config, tidak ada error di console.

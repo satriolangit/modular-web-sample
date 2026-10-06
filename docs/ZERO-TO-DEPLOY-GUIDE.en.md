@@ -100,6 +100,7 @@ npm run dev        # http://localhost:5173
 Notes:
 
 - `npm run dev` takes the client from the `current-client` symlink (or `VITE_CLIENT` in `.env`) and generates `/config.json` from env (`VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`, or `VITE_CONFIG_JSON`); `public/config.json` is only a fallback. Details: `DEVELOPER-GUIDE.en.md` §0.5.
+- Optional: copy the env sample — `cp .env.example .env` (gitignored), then adjust `VITE_MODULES`/`VITE_API_BASE`/etc.
 - Switch the active client: `CLIENT=<client> npm run link:client`, then restart the dev server.
 - Full laptop setup (nvm/WSL): `DEVELOPER-GUIDE.en.md` §0.
 

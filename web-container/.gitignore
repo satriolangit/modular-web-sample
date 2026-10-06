@@ -4,5 +4,6 @@ coverage
 current-client
 .env
 .env.*
+!.env.example
 .DS_Store
 *.local

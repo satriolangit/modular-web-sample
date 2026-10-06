@@ -100,6 +100,7 @@ npm run dev        # http://localhost:5173
 Catatan:
 
 - `npm run dev` mengambil client dari symlink `current-client` (atau `VITE_CLIENT` di `.env`) dan men-generate `/config.json` dari env (`VITE_MODULES`, `VITE_API_BASE`, `VITE_ENABLE_AUDIT_LIVE`, atau `VITE_CONFIG_JSON`); `public/config.json` hanya fallback. Detail: `DEVELOPER-GUIDE.md` §0.5.
+- Opsional: salin sample env — `cp .env.example .env` (gitignored), lalu sesuaikan `VITE_MODULES`/`VITE_API_BASE`/dll.
 - Ganti client aktif: `CLIENT=<client> npm run link:client`, lalu restart dev server.
 - Setup laptop lengkap (nvm/WSL): `DEVELOPER-GUIDE.md` §0.
 
