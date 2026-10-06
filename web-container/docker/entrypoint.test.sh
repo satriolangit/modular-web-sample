@@ -79,6 +79,11 @@ fi
 if [ -e "$OUT" ]; then fail "invalid JSON: no file written"; else pass "invalid JSON: no file written"; fi
 expect_contains "$TMP_DIR/invalid.log" 'must be a JSON object' "invalid JSON: clear message"
 
+# 7. registryUrl dari env
+OUT="$TMP_DIR/registry.json"
+CONFIG_FILE="$OUT" VITE_REGISTRY_URL=https://cdn.example/registry.json sh "$ENTRYPOINT" >/dev/null
+expect_contains "$OUT" '"registryUrl": "https://cdn.example/registry.json"' "registry: registryUrl diteruskan"
+
 echo ""
 echo "[entrypoint.test] ${PASS} passed, ${FAIL} failed"
 [ "$FAIL" -eq 0 ]

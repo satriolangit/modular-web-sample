@@ -6,6 +6,7 @@ CLIENT="${VITE_CLIENT:-base}"
 MODULES_CSV="${VITE_MODULES:-user-management}"
 API_BASE="${VITE_API_BASE:-https://dummyjson.com}"
 ENABLE_AUDIT_LIVE="${VITE_ENABLE_AUDIT_LIVE:-true}"
+REGISTRY_URL="${VITE_REGISTRY_URL:-}"
 
 CONFIG_JSON_COMPACT=$(printf '%s' "${VITE_CONFIG_JSON:-}" | tr -d '\n\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
@@ -39,6 +40,7 @@ cat > "$CONFIG_FILE" <<EOF
   "client": "$CLIENT",
   "modules": $MODULES_JSON,
   "apiBase": "$API_BASE",
+  "registryUrl": "$REGISTRY_URL",
   "featureFlags": {
     "enableAuditLive": $ENABLE_AUDIT_LIVE
   }

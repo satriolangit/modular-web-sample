@@ -35,11 +35,14 @@ function buildDevConfig(clientId: string, env: Env): Record<string, unknown> {
     return JSON.parse(compact) as Record<string, unknown>;
   }
 
+  const registryUrl = env.VITE_REGISTRY_URL?.trim();
+
   return {
     client: clientId,
     modules: csvModules(env.VITE_MODULES),
     apiBase: env.VITE_API_BASE ?? 'https://dummyjson.com',
     featureFlags: { enableAuditLive: env.VITE_ENABLE_AUDIT_LIVE !== 'false' },
+    ...(registryUrl ? { registryUrl } : {}),
   };
 }
 

@@ -17,6 +17,8 @@ function normalizeConfig(value: unknown): AppConfig {
       candidate.featureFlags && typeof candidate.featureFlags === 'object'
         ? (candidate.featureFlags as Record<string, boolean>)
         : DEFAULT_CONFIG.featureFlags,
+    registryUrl:
+      typeof candidate.registryUrl === 'string' ? candidate.registryUrl : undefined,
   };
 }
 

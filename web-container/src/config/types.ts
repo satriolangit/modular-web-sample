@@ -3,6 +3,7 @@ export interface AppConfig {
   modules: string[];
   apiBase: string;
   featureFlags?: Record<string, boolean>;
+  registryUrl?: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
