@@ -69,7 +69,7 @@ Notes:
 ```bash
 cd registry-service
 npm install
-ADMIN_TOKEN=<long-random-token> npm start
+ADMIN_TOKEN=<long-random-token> ADMIN_CORS_ORIGIN=https://portal.example.com npm start
 ```
 
 Health: `curl -s http://localhost:4310/healthz` → `{"ok":true}`.
@@ -136,6 +136,8 @@ VITE_REGISTRY_URL=https://registry.example.com/registry.json
 VITE_REGISTRY_ADMIN_URL=https://registry.example.com
 VITE_MODULES=user-management,registry-admin,module-runtime-demo
 ```
+
+> **Warning:** `VITE_REGISTRY_URL` and `VITE_REGISTRY_ADMIN_URL` must point at the same service; when only `VITE_REGISTRY_ADMIN_URL` is set, uploaded modules will never load in the app.
 
 ---
 

@@ -69,7 +69,7 @@ Catatan:
 ```bash
 cd registry-service
 npm install
-ADMIN_TOKEN=<token-panjang-acak> npm start
+ADMIN_TOKEN=<token-panjang-acak> ADMIN_CORS_ORIGIN=https://portal.example.com npm start
 ```
 
 Kesehatan: `curl -s http://localhost:4310/healthz` → `{"ok":true}`.
@@ -136,6 +136,8 @@ VITE_REGISTRY_URL=https://registry.example.com/registry.json
 VITE_REGISTRY_ADMIN_URL=https://registry.example.com
 VITE_MODULES=user-management,registry-admin,module-runtime-demo
 ```
+
+> **Peringatan:** `VITE_REGISTRY_URL` dan `VITE_REGISTRY_ADMIN_URL` harus menunjuk ke service yang sama; bila hanya `VITE_REGISTRY_ADMIN_URL` yang diisi, module hasil upload tidak akan pernah dimuat aplikasi.
 
 ---
 
