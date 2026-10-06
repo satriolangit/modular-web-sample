@@ -6,7 +6,7 @@ import { writeAudit } from './audit.mjs';
 import { bearerAuth } from './auth.mjs';
 import { loadConfig } from './config.mjs';
 import { verifyEd25519 } from './signature.mjs';
-import { ensureDataDirs, moduleVersionDir, modulesRoot, readRegistry, writeRegistry } from './storage.mjs';
+import { ensureDataDirs, moduleVersionDir, modulesRoot, readRegistry, removeModule, writeRegistry } from './storage.mjs';
 import { computeIntegrity, extractTo, parseManifest, unzip, ValidationError } from './validate.mjs';
 
 export function createApp(config) {
@@ -34,6 +34,8 @@ export function createApp(config) {
       },
     }),
   );
+
+  app.use(express.json());
 
   app.get('/api/modules', bearerAuth(config), (_req, res) => {
     const registry = readRegistry(config.dataDir);
@@ -105,6 +107,52 @@ export function createApp(config) {
       console.error('[registry-service] upload error', error);
       res.status(500).json({ error: 'internal error' });
     }
+  });
+
+  app.patch('/api/modules/:name', bearerAuth(config), (req, res) => {
+    const { name } = req.params;
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'body.enabled harus boolean' });
+      return;
+    }
+    const registry = readRegistry(config.dataDir);
+    const module = registry.modules[name];
+    if (!module) {
+      res.status(404).json({ error: `module "${name}" tidak ditemukan` });
+      return;
+    }
+    module.enabled = enabled;
+    writeRegistry(config.dataDir, registry);
+    writeAudit(config.dataDir, {
+      actor: config.adminActor,
+      action: enabled ? 'enable' : 'disable',
+      name,
+      version: module.version,
+      ip: req.ip,
+    });
+    res.json({ module: { name, ...module } });
+  });
+
+  app.delete('/api/modules/:name', bearerAuth(config), (req, res) => {
+    const { name } = req.params;
+    const registry = readRegistry(config.dataDir);
+    const module = registry.modules[name];
+    if (!module) {
+      res.status(404).json({ error: `module "${name}" tidak ditemukan` });
+      return;
+    }
+    delete registry.modules[name];
+    writeRegistry(config.dataDir, registry);
+    removeModule(config.dataDir, name);
+    writeAudit(config.dataDir, {
+      actor: config.adminActor,
+      action: 'delete',
+      name,
+      version: module.version,
+      ip: req.ip,
+    });
+    res.status(204).end();
   });
 
   app.use((error, _req, res, _next) => {
