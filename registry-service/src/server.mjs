@@ -123,7 +123,6 @@ export function createApp(config) {
       return;
     }
     module.enabled = enabled;
-    writeRegistry(config.dataDir, registry);
     writeAudit(config.dataDir, {
       actor: config.adminActor,
       action: enabled ? 'enable' : 'disable',
@@ -131,6 +130,7 @@ export function createApp(config) {
       version: module.version,
       ip: req.ip,
     });
+    writeRegistry(config.dataDir, registry);
     res.json({ module: { name, ...module } });
   });
 
@@ -143,8 +143,6 @@ export function createApp(config) {
       return;
     }
     delete registry.modules[name];
-    writeRegistry(config.dataDir, registry);
-    removeModule(config.dataDir, name);
     writeAudit(config.dataDir, {
       actor: config.adminActor,
       action: 'delete',
@@ -152,6 +150,8 @@ export function createApp(config) {
       version: module.version,
       ip: req.ip,
     });
+    writeRegistry(config.dataDir, registry);
+    removeModule(config.dataDir, name);
     res.status(204).end();
   });
 

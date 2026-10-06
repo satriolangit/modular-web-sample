@@ -79,6 +79,18 @@ describe('admin endpoints', () => {
     expect(registry.modules['demo-module'].enabled).toBe(true);
   });
 
+  it('PATCH menolak enabled non-boolean dan registry tidak berubah', async () => {
+    const { base, config } = await setup();
+    const res = await fetch(`${base}/api/modules/demo-module`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: 'yes' }),
+    });
+    expect(res.status).toBe(400);
+    const registry = JSON.parse(readFileSync(path.join(config.dataDir, 'registry.json'), 'utf8'));
+    expect(registry.modules['demo-module'].enabled).toBe(true);
+  });
+
   it('PATCH/DELETE 404 untuk nama tak dikenal', async () => {
     const { base } = await setup();
     const patch = await fetch(`${base}/api/modules/nope`, {
