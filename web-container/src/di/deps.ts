@@ -19,6 +19,7 @@ import { createQueryClient } from '../query/queryClient';
 import { createRouteRegistry, type RouteRegistry } from '../routes/routeRegistry';
 import { createSlotRegistry, type SlotRegistry } from '../slots/slotRegistry';
 import { createToastService, type ToastService } from '../toast/toastService';
+import { createRuntimeHooks, type RuntimeHooks } from './runtime';
 
 export interface Deps {
   config: AppConfig;
@@ -34,6 +35,7 @@ export interface Deps {
   slots: SlotRegistry;
   routes: RouteRegistry;
   menu: MenuRegistry;
+  runtime: RuntimeHooks;
 }
 
 export function createDeps(config: AppConfig): Deps {
@@ -52,6 +54,7 @@ export function createDeps(config: AppConfig): Deps {
   const slots = createSlotRegistry();
   const routes = createRouteRegistry();
   const menu = createMenuRegistry();
+  const runtime = createRuntimeHooks();
 
   return {
     config,
@@ -67,5 +70,6 @@ export function createDeps(config: AppConfig): Deps {
     slots,
     routes,
     menu,
+    runtime,
   };
 }

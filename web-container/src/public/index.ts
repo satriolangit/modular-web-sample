@@ -29,6 +29,7 @@ export { isDev } from '../env';
 
 export type { AppConfig } from '../config/types';
 export type { Deps } from '../di/deps';
+export type { RuntimeHooks } from '../di/runtime';
 export type { Logger, LogLevel } from '../logger/logger';
 export type { ApiRegistry } from '../api/apiRegistry';
 export type { EventBus, EventHandler } from '../events/eventBus';
