@@ -27,6 +27,7 @@
     "test:watch": "vitest",
     "test:entrypoint": "sh docker/entrypoint.test.sh",
     "test:e2e:runtime": "node scripts/e2e-runtime-module.mjs",
+    "test:e2e:registry-admin": "node scripts/e2e-registry-admin.mjs",
     "lint": "eslint . --ext .ts,.tsx",
     "check:dockerfile": "node scripts/check-dockerfile-modules.mjs"
   },
