@@ -1,0 +1,8 @@
+{
+  "menu": "Runtime Demo",
+  "title": "Module Runtime Demo",
+  "description": "Dimuat dari registry saat runtime (Module Federation).",
+  "loading": "Memuat...",
+  "button": "Toast #{{count}}",
+  "toast": "Halo dari module terinstal (#{{count}})"
+}

@@ -1,0 +1,8 @@
+{
+  "menu": "Runtime Demo",
+  "title": "Runtime Demo Module",
+  "description": "Loaded from the registry at runtime (Module Federation).",
+  "loading": "Loading...",
+  "button": "Toast #{{count}}",
+  "toast": "Hello from installed module (#{{count}})"
+}
