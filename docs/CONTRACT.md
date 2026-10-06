@@ -959,6 +959,7 @@ deps.routes.add({
 
 - Route path **wajib** unik. Kalau duplikat, error.
 - Extension **boleh** override route modul.
+- Extension yang meng-override route milik module **opsional** **wajib** memeriksa `routes.has(path)` lebih dulu (lewati + `logger.warn` bila belum ada) atau memastikan module tersebut aktif di `config.modules`; override route tak dikenal tetap **throw** di registry.
 - Extension **boleh** tambah route baru.
 - Route baru **wajib** punya `meta.module` untuk tracking.
 - Route path **wajib** konsisten dengan prefix modul.
@@ -1224,11 +1225,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.7.3
-**Last updated**: 2026-10-03
+**Document version**: 0.7.4
+**Last updated**: 2026-10-06
 
 **Changelog:**
 
+- **0.7.4** — §12.4: extension yang meng-override route module opsional wajib guard `routes.has` (lewati + warn) atau pastikan module aktif; config dev memakai base `public/config.json` (env menimpa per-field).
 - **0.7.3** — Dev env-driven: script generik `dev`/`build` membaca symlink `current-client` (atau `VITE_CLIENT` dari `.env`); `/config.json` dev digenerate dev server dari env (mapping sama dengan production, termasuk `VITE_CONFIG_JSON`); script per-client dihapus; §14.1 diperbarui.
 - **0.7.2** — Struktur repo: extension default `web-extension-base` → `web-extension-default` (package `@arsi/extension-default`); repo client `arsi-web-client-<x>` (checkout `web-extension-client-<x>`, client id `client-<x>`); `web-extension-template` menjadi bagian repo base; script `npm run link:base` untuk base. Aturan §1.6/§15 diperbarui.
 - **0.7.1** — Override penuh `config.json` via env runtime `VITE_CONFIG_JSON` (entrypoint base, validasi fail-fast, env individual diabaikan bila diisi); aturan §14.1/§14.3 diperbarui.
