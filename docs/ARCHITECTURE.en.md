@@ -447,3 +447,197 @@ sequenceDiagram
 - **Failed config → fallback, not a crash.** If `fetch` fails (missing file, network trouble, invalid JSON), `loadConfig` logs a warning and uses `DEFAULT_CONFIG`: `{ client: 'default', modules: [], apiBase: '', featureFlags: {} }` (`web-container/src/config/loadConfig.ts:31`, `web-container/src/config/types.ts:8`). The app still boots as a shell without modules. Fail-fast applies to *wiring* mistakes in code, not to runtime config that may be absent in some environment.
 - **Bad wiring → fail-fast.** Boot stops with a clear message for: a module not wired in the loader map (`discover.ts:16`), a duplicate route (`routeRegistry.ts:27`), an override of an unknown route (`routeRegistry.ts:33`), and duplicate slot/service/menu/modal (`slotRegistry.ts:17`, `apiRegistry.ts:15`, `menuRegistry.ts:19`, `modalService.ts:38`).
 - **The extension is always last.** Because every module finishes init first, module routes already exist when the extension overrides them — this order is what makes overrides valid. `bootstrap` also memoizes its promise (`bootstrap/index.tsx:46-52`), so `deps` and the router are created only once per page load.
+
+---
+
+## 6. Config & Runtime Behavior
+
+§5 already showed `loadConfig()` reading `/config.json` at boot. This section explains **where that file's content comes from** — the dev server or a container entrypoint (the script run automatically when the container starts) — and the winning order when several sources are set at once. Config here is **runtime**, not build-time: the same bundle can run in different environments just by changing env vars at start.
+
+### 6.1 The `AppConfig` Shape
+
+A valid `/config.json` body is normalized into `AppConfig` (`web-container/src/config/types.ts:1`):
+
+| Field          | Contents                                                 | Used for                                          |
+| -------------- | -------------------------------------------------------- | ------------------------------------------------- |
+| `client`       | Client name                                              | Logger message prefix; client identity at runtime |
+| `modules`      | List of active module names                              | Discovery: its order sets init order (§4.1)       |
+| `apiBase`      | Backend base URL                                         | Module HTTP services (`axios`, §4.5)              |
+| `featureFlags` | Optional runtime boolean flags, e.g. `enableAuditLive`   | Toggle features without a rebuild                 |
+
+Normalization (`normalizeConfig`, `web-container/src/config/loadConfig.ts:3`) enforces types: a field of the wrong type is replaced with its default (`client: 'default'`, `modules: []`, `apiBase: ''`, `featureFlags: {}`, `types.ts:8`). If `fetch` fails entirely, `loadConfig` uses `DEFAULT_CONFIG` and the app boots as a module-less shell (details in §5).
+
+Modules and extensions **must not** read env vars or fetch `/config.json` themselves; everything goes through `deps.config` / `useConfig()` (`CONTRACT` §14.3).
+
+### 6.2 Dev: the Dev Server Generates `/config.json`
+
+When `npm run dev` runs in `web-container`, the `devConfigPlugin` (apply `serve`, `web-container/vite.config.ts:22`) intercepts requests for `/config.json`, including the browser's request at boot. Env comes from `.env` files plus the process environment (`loadEnv(mode, rootDir, '')`, `:24`), and the response is always `Cache-Control: no-store` (`:41`).
+
+Winning order, strongest first:
+
+1. **`VITE_CONFIG_JSON` — full override.** The whole config comes from this env value; other individual envs are ignored. It must be a JSON object (starts with `{`, ends with `}`); otherwise the dev server responds HTTP 500 with `[dev-config] VITE_CONFIG_JSON must be a JSON object (start with '{' and end with '}')` (`web-container/scripts/dev-config.mjs:34-38`).
+2. **Individual env vars** — override fields on top of the base:
+   - `VITE_MODULES` — a CSV (comma-separated list) that **replaces** the whole module list (`dev-config.mjs:55`);
+   - `VITE_API_BASE` — replaces `apiBase` (`:56`);
+   - `VITE_ENABLE_AUDIT_LIVE` — sets `featureFlags.enableAuditLive`; `false` turns it off, any other non-empty value turns it on (`:60`).
+3. **`public/config.json`** — the committed base; fields not overridden by env are taken as-is. In this repo it holds `client-a` + three modules (`web-container/public/config.json:1`).
+4. **Defaults** — used when the base is missing or a field is empty: modules `['user-management']`, apiBase `https://dummyjson.com` (`dev-config.mjs:4-5`).
+
+The client id in dev is resolved from the `current-client` symlink or `.env` (`resolveClientId`). When there is no client and `VITE_CONFIG_JSON` is empty too, the dev server serves the raw `public/config.json` (`vite.config.ts:43-50`).
+
+### 6.3 Production: the Container Entrypoint Writes `/config.json`
+
+In production images, `/config.json` is **written at container start** by `entrypoint.sh`, which the runtime image installs as `/docker-entrypoint.d/40-generate-config.sh` (`Dockerfile:40`). The script reads env vars and writes `/usr/share/nginx/html/config.json` — the path can be changed via `CONFIG_FILE` (`web-container/docker/entrypoint.sh:4`).
+
+| Container runtime env    | Effect                                      | Default                 |
+| ------------------------ | ------------------------------------------- | ----------------------- |
+| `VITE_CLIENT`            | `client` field                              | `base`                  |
+| `VITE_MODULES` (CSV)     | `modules` field (joined into a JSON array)  | `user-management`       |
+| `VITE_API_BASE`          | `apiBase` field                             | `https://dummyjson.com` |
+| `VITE_ENABLE_AUDIT_LIVE` | `featureFlags.enableAuditLive`              | `true`                  |
+| `VITE_CONFIG_JSON`       | Full override: config body written verbatim | empty                   |
+
+`VITE_CONFIG_JSON` wins completely: individual envs are ignored (logged, `entrypoint.sh:21`); if the value is not a JSON object → `exit 1` and the container fails to start (`:16-17`).
+
+The consequence is exactly the **one image, many environments** principle (§1.2): changing the API base, module list, or flags is just env at `docker run`, with no rebuild. What is still fixed at image build time is **which client extension is included** (covered in §8); `VITE_CLIENT` only fills the client name in config.
+
+### 6.4 Config Resolution Order
+
+```mermaid
+flowchart TD
+    A[Dev server / entrypoint] --> B{VITE_CONFIG_JSON diisi?}
+    B -->|ya| C[/config.json = JSON dari env/]
+    B -->|tidak| D{env individual diisi?}
+    D -->|ya| E[env menimpa field pada base public/config.json]
+    D -->|tidak| F[base public/config.json apa adanya]
+    E --> G[/config.json final/]
+    F --> G
+```
+
+Two runtimes are merged in the diagram: the **dev server** uses `public/config.json` as its base (§6.2), while the **production entrypoint** always rewrites that file from env/defaults (§6.3) — the bundled copy of `public/config.json` is never used as a base. The outcome is the same: one final `/config.json` read by `loadConfig()` at boot.
+
+Two different failure modes: in production, an invalid `VITE_CONFIG_JSON` fails **container start** (fail-fast); in the browser, a config that fails to fetch only falls back to `DEFAULT_CONFIG` and the app still boots (§5).
+
+---
+
+## 7. The 3 Override Levels + Guard
+
+An extension customizes the app without touching container or module code. There are three levels, from safest to most invasive:
+
+| # | Level           | API                                                       | Nature                                                                    | Example in this repo                                                                           |
+| - | --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1 | Slot            | `deps.slots.register(name, component)`                    | Additive: only adds a component at an extension point the module provides | `AuditButton` fills `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:62`)   |
+| 2 | Route override  | `deps.routes.override(path, {element, meta})`             | Replaces the whole route entry                                            | `/users/:id` → `ClientAUserDetail` (`:64`)                                                     |
+| 3 | Service wrapper | `deps.apiRegistry.register('<client>.<service>', client)` | Adds a new client-namespaced service                                      | `client-a.audit` (`:60`)                                                                       |
+
+Jargon: **additive** means it can only add, never remove; **invasive** means it changes already-registered behavior.
+
+- **Level 1 — slot.** A UI extension point declared by a module (§4.3). The safest because it changes nothing that already exists. Its limit: one slot holds only one component — a second registration throws `[slots] slot "..." already has a component registered` (`web-container/src/slots/slotRegistry.ts:17`).
+- **Level 2 — route override.** `override(path, {element, meta})` replaces the **whole entry**, not just the fields you pass; the path itself cannot be changed via override. Pass `meta` again (e.g. `{ group, module }`) so module attribution is not lost. Without a guard, overriding a path that is not registered throws `[routes] cannot override unknown route "<path>"` (`web-container/src/routes/routeRegistry.ts:33`).
+- **Level 3 — service wrapper.** The service registry has no concept of overriding, so an extension registers a **new** name namespaced as `<client>.<service>` (`CONTRACT` §4.5); that makes a collision with a base service impossible. Core services (`auth`, `user`, `product`) are registered by the base (`auth` at `web-container/src/di/deps.ts:45`) and **must not** be overridden by extensions. A duplicate name → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`).
+
+### 7.1 Guard for Optional Modules
+
+The same extension may be installed for clients with a different module subset. A route override targets a module route; if that module is not active in `config.modules`, its route never gets registered. A blind `override` would fail boot, so `CONTRACT` §12.4 requires extensions to check `routes.has(path)` first — skip with `logger.warn` when absent — or to guarantee the module is always active.
+
+Init order helps here: the extension always inits **after** every module (§4.1), so the registry is final by the time the guard runs.
+
+The `overrideIfPresent` pattern in client-a:
+
+```tsx
+// web-extension-client-a/src/index.tsx:20
+function overrideIfPresent(
+  deps: Deps,
+  path: string,
+  definition: Parameters<Deps['routes']['override']>[1],
+): void {
+  if (!deps.routes.has(path)) {
+    deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
+    return;
+  }
+  deps.routes.override(path, definition);
+}
+```
+
+Its usage (`index.tsx:64`, `:73`) follows this shape:
+
+```tsx
+overrideIfPresent(deps, '/users/:id', {
+  element: <ClientAUserDetail />,
+  meta: { group: 'user', module: 'user-management' },
+});
+```
+
+```mermaid
+sequenceDiagram
+    participant X as Extension init
+    participant RR as RouteRegistry
+    participant L as Logger
+    X->>RR: has("/module-sample/extension-points")?
+    alt route terdaftar
+        RR-->>X: true
+        X->>RR: override(path, {element, meta})
+    else belum terdaftar (module nonaktif)
+        RR-->>X: false
+        X->>L: warn("override dilewati")
+    end
+```
+
+When an override is skipped, the app still runs with the module's default page — only that customization is missing. If boot fails with `[routes] cannot override unknown route`, the cause is usually a typo in the path or a module missing from `config.modules`.
+
+---
+
+## 8. Deploy Model: Base Image + Extension Image
+
+The deploy model follows the two repo kinds from §2: the platform team builds a **base image** once per version, then the client developer builds a **client image** on top. The client repo does **not** check out the base repo — base sources come from the builder image, as noted in §2.2.
+
+### 8.1 Base Image — Multi-Target `Dockerfile`
+
+The root `Dockerfile` has several targets (Docker multi-stage: one Dockerfile with named build stages): **builder** holds the toolchain + sources + `node_modules`, and **runtime** holds nginx + the built assets.
+
+- **`builder` target** (`Dockerfile:5`) — `FROM node:22-alpine`; copies each package's `package.json`/lockfile then `npm ci` (`:18-20`), copies sources (`:22-24`), and writes the base version to `/app/BASE_VERSION` (`:26`). A new module must be added to the `COPY` list here (a reminder comment sits at `:12`).
+- **`runtime` target** (`:35`) — `FROM nginx:1.27-alpine`; copies `dist/base` to `/usr/share/nginx/html`, `nginx.conf`, and the config entrypoint (§6.3) (`:38-41`).
+- **Intermediate `base-app` target** (`:28`) — runs `npm run check:base` then `CLIENT=base npm run build:client`; the base build is validated against itself before entering runtime.
+
+`ci/build-base.sh` builds both targets and applies **tags** (image version labels): `<version>-builder`, `<sha>-builder`, `<version>`, `<sha>` (`ci/build-base.sh:21-31`). The default version comes from `web-container/package.json`, the `sha` from the commit (`:6-7`). With `PUSH=1` all four tags are pushed (`:33-38`); with `VERIFY=1` typecheck/test/lint run before the build (`:10-17`).
+
+### 8.2 Client Image — `FROM` Base Builder & Runtime
+
+`web-extension-client-a/Dockerfile` assembles the client image from the two base images:
+
+1. `FROM ${BASE_BUILDER_IMAGE} AS builder` (`:7`) — `npm ci` for the extension then copy its source to `/app/extension` (`:11-13`).
+2. Symlink `current-client` to the extension (`:15`) — the build-time alias that selects the active extension (§4.1).
+3. Verify the extension: `typecheck`, `test --if-present`, `lint` (`:16`).
+4. `npm run check:base` then `CLIENT=<client> npm run build:client` (`:17-19`) — producing `dist/<client>` inside the builder.
+5. `FROM ${BASE_RUNTIME_IMAGE} AS runtime` (`:21`) — replace the html root with `dist/<client>` (`:24-25`) and set `ENV VITE_CLIENT=<client>` (`:26`).
+
+The key point: there is no `COPY` of modules or base sources from the client repo — they all come from the builder image (`/app/web-container`, `/app/web-modules`, noted in §2.2). The client repo carries only extension code.
+
+`ci/build-client.sh` takes `BASE_VERSION` from `manifest.json:baseVersion` (`:6`), pulls both base images (default `PULL=1`, `:14-17`), builds tagged with the build id (`BUILD_ID`, default git short SHA), and pushes when `PUSH=1` (`:21-30`).
+
+### 8.3 Pinning `baseVersion` & Adopting a New Base
+
+`manifest.json:baseVersion` pins the **exact tag** of the base a client uses (in this repo `0.1.0`, `web-extension-client-a/manifest.json:3`). At client build time, `check:base` compares the manifest value against `/app/BASE_VERSION` in the builder image; a mismatch → error telling you to bump `baseVersion` or use the right base tag (`web-container/scripts/check-base-version.mjs:29-34`). A client build therefore cannot silently use the wrong base.
+
+Adopting a new base = a PR in the client repo bumping `baseVersion`, then rebuilding the client image. There is no base checkout step on the client side.
+
+### 8.4 Build & Runtime Flow
+
+```mermaid
+flowchart LR
+    subgraph Base repo
+        D[Dockerfile multi-target] --> BIMG[builder image]
+        D --> RIMG[runtime image]
+    end
+    subgraph Client repo
+        CD[Dockerfile client] -->|FROM builder| CB[build + verify + build:client]
+        CB -->|FROM runtime| CIMG[client image]
+    end
+    BIMG --> CB
+    RIMG --> CIMG
+    CIMG --> VM[VM / runtime: env → /config.json]
+```
+
+Once the client image exists, it behaves like the base at runtime: the entrypoint writes `/config.json` from env at container start (§6.3), so the same image can serve several environments.
+
+Full operational steps — build, push, run, smoke test — live in `DEPLOYMENT-GUIDE`: **Tutorial A** (deploy on a local laptop), **Tutorial B** (deploy on an Ubuntu server), and **Tutorial C** (deploy via Azure CI/CD).

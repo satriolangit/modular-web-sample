@@ -447,3 +447,197 @@ sequenceDiagram
 - **Config gagal → fallback, bukan crash.** Bila `fetch` gagal (file tidak ada, jaringan bermasalah, JSON tidak valid), `loadConfig` menulis warning ke console dan memakai `DEFAULT_CONFIG`: `{ client: 'default', modules: [], apiBase: '', featureFlags: {} }` (`web-container/src/config/loadConfig.ts:31`, `web-container/src/config/types.ts:8`). Aplikasi tetap boot sebagai shell tanpa modul. Fail-fast berlaku untuk kesalahan *wiring* di kode, bukan untuk config runtime yang bisa absen.
 - **Wiring salah → fail-fast.** Boot berhenti dengan pesan jelas untuk: module yang tak ter-wire di loader map (`discover.ts:16`), route duplikat (`routeRegistry.ts:27`), override route tak dikenal (`routeRegistry.ts:33`), serta slot/service/menu/modal duplikat (`slotRegistry.ts:17`, `apiRegistry.ts:15`, `menuRegistry.ts:19`, `modalService.ts:38`).
 - **Extension selalu terakhir.** Karena semua modul selesai init lebih dulu, route milik modul sudah ada saat extension meng-override — urutan ini yang membuat override valid. `bootstrap` juga meng-cache promise-nya (`bootstrap/index.tsx:46-52`), jadi `deps` dan router hanya dibuat sekali per halaman.
+
+---
+
+## 6. Config & Perilaku Runtime
+
+§5 sudah menunjukkan `loadConfig()` membaca `/config.json` saat boot. Bagian ini menjelaskan **dari mana isi file itu berasal** — dev server atau entrypoint container (skrip yang dijalankan otomatis saat container start) — dan urutan menang saat beberapa sumber diisi bersamaan. Config di platform ini bersifat **runtime**, bukan build-time: bundle yang sama bisa dijalankan di environment berbeda hanya dengan mengganti env var saat start.
+
+### 6.1 Bentuk `AppConfig`
+
+Isi `/config.json` yang valid dinormalisasi menjadi `AppConfig` (`web-container/src/config/types.ts:1`):
+
+| Field          | Isi                                                      | Dipakai untuk                                      |
+| -------------- | -------------------------------------------------------- | -------------------------------------------------- |
+| `client`       | Nama klien                                               | Prefix pesan logger; identitas klien di runtime    |
+| `modules`      | Daftar nama modul aktif                                  | Discovery: urutannya menentukan urutan init (§4.1) |
+| `apiBase`      | Base URL backend                                         | Service HTTP modul (`axios`, §4.5)                 |
+| `featureFlags` | Flag boolean runtime (opsional), mis. `enableAuditLive`  | Menyalakan fitur tanpa rebuild                     |
+
+Normalisasi (`normalizeConfig`, `web-container/src/config/loadConfig.ts:3`) menjaga tipe: field yang salah tipe diganti default (`client: 'default'`, `modules: []`, `apiBase: ''`, `featureFlags: {}`, `types.ts:8`). Kalau `fetch` gagal sepenuhnya, `loadConfig` memakai `DEFAULT_CONFIG` dan aplikasi boot sebagai shell tanpa modul (detail §5).
+
+Modul dan extension **tidak boleh** membaca env atau fetch `/config.json` sendiri; semua lewat `deps.config` / `useConfig()` (`CONTRACT` §14.3).
+
+### 6.2 Dev: Dev Server yang Men-generate `/config.json`
+
+Saat `npm run dev` di `web-container`, plugin `devConfigPlugin` (apply `serve`, `web-container/vite.config.ts:22`) mencegat request `/config.json`, termasuk request browser saat boot. Env dibaca dari file `.env` plus environment proses (`loadEnv(mode, rootDir, '')`, `:24`), dan responsnya selalu `Cache-Control: no-store` (`:41`).
+
+Urutan menang, dari yang paling kuat:
+
+1. **`VITE_CONFIG_JSON` — override penuh.** Seluruh config diambil dari nilai env ini; env individual lain diabaikan. Nilainya harus object JSON (diawali `{`, diakhiri `}`), kalau tidak dev server membalas HTTP 500 dengan pesan `[dev-config] VITE_CONFIG_JSON must be a JSON object (start with '{' and end with '}')` (`web-container/scripts/dev-config.mjs:34-38`).
+2. **Env individual** — menimpa field di atas base:
+   - `VITE_MODULES` — CSV (daftar dipisah koma) yang **mengganti** seluruh daftar modul (`dev-config.mjs:55`);
+   - `VITE_API_BASE` — mengganti `apiBase` (`:56`);
+   - `VITE_ENABLE_AUDIT_LIVE` — menyetel `featureFlags.enableAuditLive`; `false` mematikan, nilai non-kosong lain menyalakan (`:60`).
+3. **`public/config.json`** — base yang di-commit; field yang tidak ditimpa env diambil apa adanya. Di repo ini isinya `client-a` + tiga modul (`web-container/public/config.json:1`).
+4. **Default** — dipakai kalau base tidak ada atau field-nya kosong: modul `['user-management']`, apiBase `https://dummyjson.com` (`dev-config.mjs:4-5`).
+
+Client id di dev di-resolve dari symlink `current-client` atau `.env` (`resolveClientId`). Bila tidak ada client dan `VITE_CONFIG_JSON` juga kosong, dev server menyajikan `public/config.json` mentah (`vite.config.ts:43-50`).
+
+### 6.3 Production: Entrypoint Container Menulis `/config.json`
+
+Di image production, `/config.json` **ditulis saat container start** oleh `entrypoint.sh`, yang image runtime pasang sebagai `/docker-entrypoint.d/40-generate-config.sh` (`Dockerfile:40`). Script ini membaca env lalu menulis ke `/usr/share/nginx/html/config.json` — path bisa diganti lewat `CONFIG_FILE` (`web-container/docker/entrypoint.sh:4`).
+
+| Env runtime container    | Efek                                          | Default                 |
+| ------------------------ | --------------------------------------------- | ----------------------- |
+| `VITE_CLIENT`            | Field `client`                                | `base`                  |
+| `VITE_MODULES` (CSV)     | Field `modules` (dirangkai jadi array JSON)   | `user-management`       |
+| `VITE_API_BASE`          | Field `apiBase`                               | `https://dummyjson.com` |
+| `VITE_ENABLE_AUDIT_LIVE` | `featureFlags.enableAuditLive`                | `true`                  |
+| `VITE_CONFIG_JSON`       | Override penuh: isi config ditulis apa adanya | kosong                  |
+
+`VITE_CONFIG_JSON` menang penuh: env individual diabaikan (dicatat di log, `entrypoint.sh:21`); kalau nilainya bukan object JSON → `exit 1` dan container gagal start (`:16-17`).
+
+Konsekuensinya persis prinsip **satu image, banyak environment** (§1.2): ganti API base, daftar modul, atau flag cukup lewat env saat `docker run`, tanpa rebuild. Yang tetap ditentukan saat build image adalah **extension klien mana yang ikut** (dibahas §8); `VITE_CLIENT` hanya mengisi nama klien di config.
+
+### 6.4 Urutan Resolusi Config
+
+```mermaid
+flowchart TD
+    A[Dev server / entrypoint] --> B{VITE_CONFIG_JSON diisi?}
+    B -->|ya| C[/config.json = JSON dari env/]
+    B -->|tidak| D{env individual diisi?}
+    D -->|ya| E[env menimpa field pada base public/config.json]
+    D -->|tidak| F[base public/config.json apa adanya]
+    E --> G[/config.json final/]
+    F --> G
+```
+
+Dua runtime disatukan di diagram: **dev server** memakai `public/config.json` sebagai base (§6.2), sedangkan **entrypoint production** selalu menulis ulang file itu dari env/default (§6.3) — salinan `public/config.json` yang ikut ter-bundle tidak pernah dipakai sebagai base. Hasil akhirnya sama: satu `/config.json` final yang dibaca `loadConfig()` saat boot.
+
+Dua mode kegagalan yang berbeda: di production, `VITE_CONFIG_JSON` yang tidak valid menggagalkan **start container** (fail-fast); di browser, config yang gagal di-fetch hanya jatuh ke `DEFAULT_CONFIG` dan aplikasi tetap boot (§5).
+
+---
+
+## 7. Override 3 Level + Guard
+
+Extension menyesuaikan aplikasi tanpa menyentuh kode container atau modul. Ada tiga level, dari yang paling aman ke yang paling invasif:
+
+| # | Level           | API                                                       | Sifat                                                                  | Contoh di repo ini                                                                             |
+| - | --------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1 | Slot            | `deps.slots.register(name, component)`                    | Aditif: hanya menambah komponen di titik sambung yang disediakan modul | `AuditButton` mengisi `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:62`) |
+| 2 | Route override  | `deps.routes.override(path, {element, meta})`             | Mengganti seluruh entry route                                          | `/users/:id` → `ClientAUserDetail` (`:64`)                                                     |
+| 3 | Service wrapper | `deps.apiRegistry.register('<client>.<service>', client)` | Menambah service baru ber-namespace klien                              | `client-a.audit` (`:60`)                                                                       |
+
+Jargon: **aditif** berarti hanya bisa menambah dan tidak bisa menghapus; **invasif** berarti mengubah perilaku yang sudah terdaftar.
+
+- **Level 1 — slot.** Titik sambung UI yang dideklarasikan modul (§4.3). Paling aman karena tidak mengubah apa pun yang sudah ada. Batasnya: satu slot hanya boleh diisi satu komponen — pendaftaran kedua melempar `[slots] slot "..." already has a component registered` (`web-container/src/slots/slotRegistry.ts:17`).
+- **Level 2 — route override.** `override(path, {element, meta})` mengganti **seluruh entry**, bukan hanya field yang dikirim; path-nya sendiri tidak bisa diubah lewat override. Sertakan `meta` lagi (mis. `{ group, module }`) supaya atribusi modul tidak hilang. Tanpa guard, override path yang belum terdaftar melempar `[routes] cannot override unknown route "<path>"` (`web-container/src/routes/routeRegistry.ts:33`).
+- **Level 3 — service wrapper.** Registry service tidak mengenal penimpaan, jadi extension mendaftarkan nama **baru** dengan namespace `<client>.<service>` (`CONTRACT` §4.5); dengan begitu tidak mungkin bentrok dengan service base. Service core (`auth`, `user`, `product`) didaftarkan base (`auth` di `web-container/src/di/deps.ts:45`) dan **tidak boleh** di-override extension. Nama duplikat → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`).
+
+### 7.1 Guard untuk Module Opsional
+
+Extension yang sama bisa dipasang untuk klien dengan subset modul berbeda. Route override menyasar route milik modul; kalau modul itu tidak aktif di `config.modules`, route-nya tidak pernah terdaftar. `override` tanpa pengecekan akan menggagalkan boot, karena itu `CONTRACT` §12.4 mewajibkan extension memeriksa `routes.has(path)` lebih dulu — lewati dengan `logger.warn` bila belum ada — atau memastikan modulnya selalu aktif.
+
+Urutan init menolong di sini: extension selalu init **setelah** semua modul (§4.1), jadi saat guard berjalan registry sudah final.
+
+Contoh pola `overrideIfPresent` di client-a:
+
+```tsx
+// web-extension-client-a/src/index.tsx:20
+function overrideIfPresent(
+  deps: Deps,
+  path: string,
+  definition: Parameters<Deps['routes']['override']>[1],
+): void {
+  if (!deps.routes.has(path)) {
+    deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
+    return;
+  }
+  deps.routes.override(path, definition);
+}
+```
+
+Pemakaiannya (`index.tsx:64`, `:73`) mengikuti bentuk:
+
+```tsx
+overrideIfPresent(deps, '/users/:id', {
+  element: <ClientAUserDetail />,
+  meta: { group: 'user', module: 'user-management' },
+});
+```
+
+```mermaid
+sequenceDiagram
+    participant X as Extension init
+    participant RR as RouteRegistry
+    participant L as Logger
+    X->>RR: has("/module-sample/extension-points")?
+    alt route terdaftar
+        RR-->>X: true
+        X->>RR: override(path, {element, meta})
+    else belum terdaftar (module nonaktif)
+        RR-->>X: false
+        X->>L: warn("override dilewati")
+    end
+```
+
+Bila override dilewati, aplikasi tetap jalan dengan halaman default milik modul — hanya customization-nya yang hilang. Kalau boot gagal dengan `[routes] cannot override unknown route`, penyebabnya biasanya path salah tulis atau modul belum masuk `config.modules`.
+
+---
+
+## 8. Model Deploy: Base Image + Extension Image
+
+Model deploy mengikuti dua jenis repo di §2: platform team membangun **base image** sekali per versi, lalu developer klien membangun **client image** di atasnya. Repo klien **tidak** men-checkout repo base — source base datang dari image builder, sesuai catatan §2.2.
+
+### 8.1 Base Image — `Dockerfile` Multi-target
+
+Root `Dockerfile` punya beberapa target (Docker multi-stage, yaitu satu Dockerfile dengan tahap build bernama): **builder** berisi toolchain + source + `node_modules`, dan **runtime** berisi nginx + hasil build siap saji.
+
+- **Target `builder`** (`Dockerfile:5`) — `FROM node:22-alpine`; menyalin `package.json`/lockfile tiap paket lalu `npm ci` (`:18-20`), menyalin source (`:22-24`), dan menulis versi base ke `/app/BASE_VERSION` (`:26`). Modul baru harus ditambahkan ke daftar `COPY` package.json di sini (ada komentar pengingatnya di `:12`).
+- **Target `runtime`** (`:35`) — `FROM nginx:1.27-alpine`; menyalin `dist/base` ke `/usr/share/nginx/html`, `nginx.conf`, dan entrypoint config (§6.3) (`:38-41`).
+- **Target perantara `base-app`** (`:28`) — menjalankan `npm run check:base` lalu `CLIENT=base npm run build:client`; build base divalidasi terhadap dirinya sendiri sebelum masuk runtime.
+
+`ci/build-base.sh` membangun kedua target dan memberi **tag** (label versi image): `<versi>-builder`, `<sha>-builder`, `<versi>`, `<sha>` (`ci/build-base.sh:21-31`). Versi default diambil dari `web-container/package.json`, `sha` dari commit (`:6-7`). Dengan `PUSH=1` keempat tag di-push (`:33-38`); dengan `VERIFY=1` typecheck/test/lint dijalankan sebelum build (`:10-17`).
+
+### 8.2 Client Image — `FROM` Base Builder & Runtime
+
+`web-extension-client-a/Dockerfile` merakit image klien dari dua image base di atas:
+
+1. `FROM ${BASE_BUILDER_IMAGE} AS builder` (`:7`) — `npm ci` extension lalu salin source-nya ke `/app/extension` (`:11-13`).
+2. Symlink `current-client` ke extension (`:15`) — alias build-time yang menentukan extension aktif (§4.1).
+3. Verifikasi extension: `typecheck`, `test --if-present`, `lint` (`:16`).
+4. `npm run check:base` lalu `CLIENT=<client> npm run build:client` (`:17-19`) — hasilnya `dist/<client>` di dalam builder.
+5. `FROM ${BASE_RUNTIME_IMAGE} AS runtime` (`:21`) — ganti isi html dengan `dist/<client>` (`:24-25`) dan set `ENV VITE_CLIENT=<client>` (`:26`).
+
+Poin kuncinya: tidak ada `COPY` modul atau source base dari repo klien — semuanya sudah ada di image builder (`/app/web-container`, `/app/web-modules`, dicatat §2.2). Repo klien hanya membawa kode extension.
+
+`ci/build-client.sh` mengambil `BASE_VERSION` dari `manifest.json:baseVersion` (`:6`), mem-pull kedua image base (default `PULL=1`, `:14-17`), build dengan tag build id (`BUILD_ID`, default short SHA git), dan push bila `PUSH=1` (`:21-30`).
+
+### 8.3 Pin `baseVersion` & Adopsi Base Baru
+
+`manifest.json:baseVersion` mengunci **exact tag** base yang dipakai klien (di repo ini `0.1.0`, `web-extension-client-a/manifest.json:3`). Saat build klien, `check:base` membandingkan nilai manifest dengan `/app/BASE_VERSION` di image builder; tidak sama → error dengan pesan untuk bump `baseVersion` atau memakai tag base yang benar (`web-container/scripts/check-base-version.mjs:29-34`). Jadi client build tidak bisa diam-diam memakai base yang salah.
+
+Adopsi base baru = PR di repo klien yang menaikkan `baseVersion`, lalu build ulang client image. Tidak ada langkah checkout base di sisi klien.
+
+### 8.4 Alur Build & Runtime
+
+```mermaid
+flowchart LR
+    subgraph Base repo
+        D[Dockerfile multi-target] --> BIMG[builder image]
+        D --> RIMG[runtime image]
+    end
+    subgraph Client repo
+        CD[Dockerfile client] -->|FROM builder| CB[build + verify + build:client]
+        CB -->|FROM runtime| CIMG[client image]
+    end
+    BIMG --> CB
+    RIMG --> CIMG
+    CIMG --> VM[VM / runtime: env → /config.json]
+```
+
+Setelah image klien jadi, runtime-nya berperilaku seperti base: entrypoint menulis `/config.json` dari env saat container start (§6.3), jadi image yang sama bisa dipakai untuk beberapa environment.
+
+Langkah operasional lengkap — build, push, jalankan, sampai smoke test — ada di `DEPLOYMENT-GUIDE`: **Tutorial A** (deploy di laptop lokal), **Tutorial B** (deploy di Ubuntu server), dan **Tutorial C** (deploy via Azure CI/CD).
