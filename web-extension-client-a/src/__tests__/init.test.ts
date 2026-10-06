@@ -10,7 +10,7 @@ async function loadInit() {
   return mod.default;
 }
 
-function createFakeDeps() {
+function createFakeDeps({ routeExists = true }: { routeExists?: boolean } = {}) {
   const apiRegistry = {
     register: vi.fn<(name: string, instance: AxiosInstance) => void>(),
     get: vi.fn(),
@@ -25,7 +25,7 @@ function createFakeDeps() {
     add: vi.fn(),
     override: vi.fn<(path: string, definition: unknown) => void>(),
     getRoutes: vi.fn(() => []),
-    has: vi.fn(),
+    has: vi.fn(() => routeExists),
   };
   const events = {
     on: vi.fn<(event: string, handler: (payload: unknown) => void) => () => void>(() => () => {}),
@@ -52,7 +52,16 @@ function createFakeDeps() {
     i18n,
     queryClient,
   };
-  return { deps: deps as unknown as Deps, apiRegistry, slots, routes, events, i18n, queryClient };
+  return {
+    deps: deps as unknown as Deps,
+    apiRegistry,
+    slots,
+    routes,
+    events,
+    i18n,
+    logger,
+    queryClient,
+  };
 }
 
 describe('client-a extension init', () => {
@@ -121,6 +130,19 @@ describe('client-a extension init', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: userKeys.detail(5),
     });
+  });
+
+  it('skips route overrides (warn) when the module route is not registered', async () => {
+    const { deps, routes, logger } = createFakeDeps({ routeExists: false });
+    const init = await loadInit();
+
+    await expect(init(deps)).resolves.toBeUndefined();
+
+    expect(routes.override).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('/users/:id'));
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('/module-sample/extension-points'),
+    );
   });
 
   it('is idempotent so React StrictMode double-invocation is safe', async () => {
