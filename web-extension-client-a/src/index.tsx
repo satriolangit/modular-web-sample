@@ -17,6 +17,18 @@ import { ClientAUserDetail } from './overrides/user-management/ClientAUserDetail
 
 let initialized = false;
 
+function overrideIfPresent(
+  deps: Deps,
+  path: string,
+  definition: Parameters<Deps['routes']['override']>[1],
+): void {
+  if (!deps.routes.has(path)) {
+    deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
+    return;
+  }
+  deps.routes.override(path, definition);
+}
+
 export default async function init(deps: Deps): Promise<void> {
   if (initialized) {
     return;
@@ -49,7 +61,7 @@ export default async function init(deps: Deps): Promise<void> {
 
   deps.slots.register(userSlots.userTableActions, AuditButton);
 
-  deps.routes.override('/users/:id', {
+  overrideIfPresent(deps, '/users/:id', {
     element: <ClientAUserDetail />,
     meta: { group: 'user', module: 'user-management' },
   });
@@ -58,7 +70,7 @@ export default async function init(deps: Deps): Promise<void> {
   deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
 
   // Tier 2 — route override: ganti halaman extension-points milik module-sample.
-  deps.routes.override('/module-sample/extension-points', {
+  overrideIfPresent(deps, '/module-sample/extension-points', {
     element: <ClientAExtensionPointsPage />,
     meta: { group: 'sample', module: 'module-sample' },
   });
