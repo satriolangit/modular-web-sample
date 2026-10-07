@@ -1087,3 +1087,180 @@ Catatan:
 - [ ] `.env` VM berisi `BUILD_ID` commit yang di-deploy.
 - [ ] Rollback pernah diuji (langkah VM atau run dari tag rilis lama).
 - [ ] Tidak ada token/password di YAML maupun variable non-secret.
+
+---
+
+## Environments & Promotion
+
+Satu image client dipakai di semua environment; yang berbeda hanya env saat start. Promosi = pakai tag yang sama, bukan rebuild.
+
+| Environment | Image | Sumber config | Cara promosi |
+| --- | --- | --- | --- |
+| Staging | `docker.io/<org>/arsi-web-<client>:<buildId>` | variable group / `.env` staging | pipeline client pada `main` (Tutorial C C.4) |
+| Production | **image yang sama** (tag `<buildId>` yang sama) | variable group / `.env` produksi | approval environment lalu deploy SSH (Tutorial C C.5–C.6) |
+
+Aturan:
+
+- Simpan nilai env per environment di variable group (Tutorial C C.2) atau secret manager — bukan di repo.
+- Ganti env = recreate container, bukan rebuild: `docker compose up -d --force-recreate`, lalu verifikasi `/config.json` (Tutorial B B.10).
+- Staging dan produksi boleh memakai `VITE_MODULES`/`VITE_API_BASE` berbeda; jangan menaruh rahasia di `VITE_*` (lihat Security Checklist).
+- Adopsi base baru = PR yang menaikkan `manifest.json:baseVersion` (§1.2) lalu rilis lewat pipeline (Tutorial C C.8).
+- Go-live checklist: lihat **Tutorial B — ✅ Checklist Go-Live Tutorial B**.
+
+## Smoke Test Pasca-Deploy
+
+Jalankan setelah setiap deploy (VM atau pipeline), dari VM:
+
+```bash
+BASE=http://localhost:8080
+CLIENT=arsi-web-<client>          # nama container (Tutorial B B.6)
+
+# 1. Config sesuai environment
+curl -sf "$BASE/config.json" | jq -e '.client and .modules and .apiBase'
+
+# 2. Halaman utama 200
+curl -sI "$BASE/" | head -1
+
+# 3. Deep link SPA fallback (harus 200 + index.html)
+curl -s "$BASE/products/1" | grep -q '<div id="root">'
+
+# 4. Header cache aset immutable
+curl -sI "$BASE/assets/$(curl -s "$BASE/" | grep -o 'assets/index-[^"]*\.js' | head -1 | cut -d/ -f2)" \
+  | grep -i 'cache-control: public, immutable'
+
+# 5. Log entrypoint
+docker logs "$CLIENT" 2>&1 | grep Generated
+```
+
+Ganti `BASE=https://app.example.com` untuk memverifikasi jalur publik (proxy + TLS, Tutorial B B.8).
+
+Checklist manual:
+
+- [ ] Login berhasil dan semua modul di `VITE_MODULES` tampil.
+- [ ] `client`/`modules`/`apiBase` di `/config.json` sama dengan `.env`/variable group.
+- [ ] Deep link (mis. `/products/1`) tidak 404; fallback SPA jalan.
+- [ ] Tidak ada error CORS/4xx/5xx di console browser.
+- [ ] `enableAuditLive` sesuai environment.
+- [ ] `/config.json` tidak ter-cache browser (hard refresh lalu cek header `no-store`).
+- [ ] `docker compose ps` → `running` + `healthy`.
+
+## Security Checklist
+
+| Kontrol | Aturan |
+| --- | --- |
+| Secret | Tidak ada secret di `VITE_*` — semua nilai masuk `/config.json` yang publik. Token/password hanya di service connection/secret manager (Tutorial C C.2). |
+| TLS | Diterminasi di reverse proxy host (Tutorial B B.8); container hanya HTTP:80 di `127.0.0.1` (B.6/B.9); jangan publish `0.0.0.0:8080`. |
+| Token registry | VM memakai token **read-only** (Tutorial B B.4); token push-capable hanya di CI; rotasi berkala lalu login ulang. |
+| Base builder private | Image `<versi>-builder` memuat source + `node_modules` — jaga private; hanya pipeline extension yang menariknya. |
+| Scan image | Scan sebelum promosi: `docker scout cves docker.io/<org>/arsi-web-<client>:<buildId>` (atau Trivy); tindak lanjuti temuan HIGH/CRITICAL. |
+| Hardening runtime | `security_opt: no-new-privileges:true` (Tutorial B B.6); SSH key-only (B.2); `ufw` hanya 22/80/443 (B.9). |
+| Audit | Catat tag image + `baseVersion` + nilai env tiap deploy; `config.json` mengungkap `client`, `modules`, `apiBase` — pastikan tidak sensitif. |
+
+## Referensi Env
+
+Sumber: `web-container/docker/entrypoint.sh` (dijalankan saat container start). Ringkasan konsep di §1.3; contoh `.env`/`compose.yaml` di Tutorial B B.6.
+
+| Env | Default | Fungsi | Diatur di |
+| --- | --- | --- | --- |
+| `VITE_CLIENT` | `base` | nilai `client` di `/config.json` | `.env` (B.6) / variable group (C.2) |
+| `VITE_MODULES` | `user-management` | CSV modul yang di-init; nama harus sama dengan folder di `web-modules/modules/` | idem |
+| `VITE_API_BASE` | `https://dummyjson.com` | base URL API untuk `deps.api` dan service modul | idem |
+| `VITE_ENABLE_AUDIT_LIVE` | `true` | feature flag `featureFlags.enableAuditLive` | idem |
+| `VITE_CONFIG_JSON` | — | override penuh `/config.json` (JSON object); bila diisi, empat env di atas diabaikan | `.env` / variable group |
+| `CONFIG_FILE` | `/usr/share/nginx/html/config.json` | lokasi file output config | jarang diubah (test/debug container) |
+
+Catatan:
+
+- `VITE_CONFIG_JSON` menang mutlak; nilainya **wajib** object JSON (diawali `{`, diakhiri `}`) — kalau tidak, container gagal start dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`.
+- Default di atas hanya fallback entrypoint; `compose.yaml` Tutorial B menyetel `VITE_ENABLE_AUDIT_LIVE` ke `false` bila `.env` kosong (production-safe).
+- Semua modul di `web-modules/modules/` selalu ter-bundle (lazy chunk); `VITE_MODULES` hanya memilih yang aktif saat runtime.
+- Dev tanpa container memakai env yang sama via `web-container/scripts/dev-config.mjs`.
+
+## Rollback
+
+Matrix per skenario; rollback selalu menunjuk tag immutable aslinya — jangan retag versi lama.
+
+| Skenario | Langkah | Verifikasi |
+| --- | --- | --- |
+| Container Compose di VM memakai tag buruk | Set `BUILD_ID` lama di `.env`, pull + up (Tutorial B B.10) | `docker compose ps`, `curl /config.json` |
+| Deploy pipeline buruk | Jalankan pipeline pada ref rilis lama (Run pipeline → Branch/tag), atau deploy tag lama via SSH (Tutorial C C.7) | Run hijau + `/config.json` di VM |
+| Config buruk (image benar) | Perbaiki `.env`/variable group lalu `docker compose up -d --force-recreate` (Tutorial B B.10) | `/config.json` sesuai environment |
+| Adopsi `baseVersion` bermasalah | Revert PR `baseVersion` (build ulang) atau deploy `BUILD_ID` sebelumnya (Tutorial C C.7–C.8) | `check:base` hijau saat build ulang |
+
+Perintah cepat (VM):
+
+```bash
+cd /opt/arsi-web/<client>
+sed -i 's/^BUILD_ID=.*/BUILD_ID=<tag-lama>/' .env
+docker compose pull
+docker compose up -d
+curl -sf http://localhost:8080/config.json | jq -e '.client and .modules and .apiBase'
+```
+
+- Catat tag known-good setiap rilis (riwayat run / catatan rilis).
+- Setelah rollback, perbaiki di `main`; commit perbaikan menghasilkan BUILD_ID baru.
+- Rollback tidak menghapus image buruk di registry — cukup jangan dipakai lagi.
+
+## Cheat Sheet
+
+```bash
+# --- Lokal: build image (root workspace) ---
+ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh                     # base (dua image)
+cd web-extension-client-a
+ORG=<org> PULL=1 PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
+
+# --- VM: deploy / update (Tutorial B) ---
+cd /opt/arsi-web/<client>
+docker compose pull && docker compose up -d
+docker compose ps
+curl -sf http://localhost:8080/config.json | jq -e '.client and .modules and .apiBase'
+docker logs arsi-web-<client> 2>&1 | grep Generated
+
+# --- VM: ganti config tanpa image baru ---
+nano .env && docker compose up -d --force-recreate
+
+# --- VM: rollback ---
+sed -i 's/^BUILD_ID=.*/BUILD_ID=<tag-lama>/' .env
+docker compose pull && docker compose up -d
+
+# --- Azure Pipelines (Tutorial C) ---
+# UI: Pipelines → <pipeline> → Run pipeline → Branch/tag → pilih ref
+az pipelines run --name <nama-pipeline-client> --branch main
+az pipelines runs list --top 5
+```
+
+| Yang dicari | Perintah / lokasi |
+| --- | --- |
+| Tag image yang berjalan | `docker inspect --format '{{index .Config.Image}}' arsi-web-<client>` |
+| Config aktif | `curl -s http://localhost:8080/config.json \| jq .` |
+| Versi base terkunci | `manifest.json:baseVersion` di repo klien |
+| Log deploy pipeline | Azure DevOps → Pipelines → Runs → pilih run → stage `Deploy` |
+
+## Troubleshooting
+
+Tabel ini mencakup build, config, registry, SSH, dan pipeline; gejala runtime VM (502, port, Certbot) ada di Tutorial B B.12.
+
+| Gejala | Penyebab & solusi |
+| --- | --- |
+| `[bootstrap] module "x" … has no entry` | `VITE_MODULES` memuat nama yang bukan folder di `web-modules/modules/`. Perbaiki env atau tambahkan modul ke build. |
+| Modul tidak muncul walau env benar | Modul belum ter-bundle (build lama) atau tidak ada di `config.json` runtime. Cek `curl /config.json`, rebuild image. |
+| Perubahan config tidak terlihat | Browser cache (harus `no-store`) atau container belum di-recreate. `docker compose up -d --force-recreate`. |
+| Container gagal start: `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | `VITE_CONFIG_JSON` bukan object JSON (terpotong, array, atau salah kutip). Perbaiki nilainya, atau kosongkan untuk memakai env individual. |
+| App boot tanpa module setelah override | `VITE_CONFIG_JSON` valid tapi `modules` kosong/tidak ada. Isi dengan nama module yang ter-bundle; cek `curl /config.json`. |
+| `check:base` mismatch | Pesan `[check:base] baseVersion manifest (x) != base image (y)`. Samakan `manifest.json:baseVersion` dengan tag base, atau pakai `BASE_BUILDER_IMAGE` yang benar/rebuild base. |
+| Tag base `<ver>-builder` tidak ditemukan saat pull | Base versi itu belum dibuild/push, atau `REGISTRY`/`ORG` salah. Jalankan `ci/build-base.sh` di repo base atau samakan `BASE_VERSION`/`manifest.json:baseVersion`. |
+| Build Docker gagal: `package.json` modul tidak ditemukan | Modul baru belum ditambah `COPY` di `Dockerfile` root repo base. Jalankan `npm run check:dockerfile`, tambah baris COPY. |
+| `npm ci` extension gagal (lockfile) | `package-lock.json` extension tidak sinkron dengan `package.json`-nya. Jalankan `npm install` di repo extension, commit lockfile baru. |
+| `npm ci` gagal di CI | Lockfile tidak sinkron (modul baru belum `npm install` di `web-modules`). Commit lockfile. |
+| Deep link 404 | `try_files` nginx hilang/berubah — pastikan `nginx.conf` memakai `try_files $uri $uri/ /index.html`. |
+| Loader map stale di image | Build dipanggil bukan lewat `npm run build:client` / `npm run build` (pre-hook `gen:modules` tidak jalan). Pakai script npm. |
+| Docker build konteks salah (`COPY failed`) | Base wajib dibuild dari root repo base; extension dari root repo extension. Skrip `ci/build-*.sh` sudah menjalankan `docker build` dari direktori yang benar. |
+| Asset 404 setelah deploy | Base path berubah? Jangan ubah `base` Vite tanpa koordinasi; aset dilayani dari `/assets/`. |
+| `pull access denied` / 401 base image | Base builder/runtime private; jalankan `docker login` (token CI) sebelum build extension. |
+| Engine warning saat `npm install` | Node lokal > target; aman bila test lulus. CI/Docker memakai Node 22. |
+| `Permission denied (publickey)` saat deploy SSH | Public key SSH service connection belum ada di `~deploy/.ssh/authorized_keys` atau usernya salah. Periksa Tutorial C C.2 dan Tutorial B B.2; uji `ssh deploy@app.example.com`. |
+| `docker compose` tidak dikenal / `unknown shorthand flag` | Compose plugin v2 belum terpasang (yang ada `docker-compose` v1). Install `docker-compose-plugin` lalu cek `docker compose version` (Tutorial B B.3). |
+| `required variable BUILD_ID is missing` saat `compose up` | `.env` kosong/belum diisi. Isi `BUILD_ID` (Tutorial B B.6–B.7); compose memakai `${BUILD_ID:?...}`. |
+| Pipeline Azure: stage `Deploy` menunggu approval | Environment `arsi-web-client-a-production` butuh persetujuan approver. Setujui di Azure DevOps → Environments (Tutorial C C.5). |
+| Pipeline Azure: login/push Docker Hub 401 | Service connection/token salah atau variable group belum di-authorize ke pipeline. Cek Tutorial C C.2 dan Library → Pipeline permissions. |
+| Runner Azure tidak bisa SSH ke VM | Port 22 tidak terjangkau runner atau key/host berubah. Cek `ufw`/NSG VM dan uji service connection (Tutorial C C.1/C.6). |

@@ -1087,3 +1087,180 @@ Notes:
 - [ ] VM `.env` contains the `BUILD_ID` of the deployed commit.
 - [ ] Rollback has been exercised at least once (VM steps or a run from the old release tag).
 - [ ] No tokens/passwords in YAML or non-secret variables.
+
+---
+
+## Environments & Promotion
+
+The same client image runs in every environment; only the start-up env differs. Promotion = use the same tag, not a rebuild.
+
+| Environment | Image | Config source | How to promote |
+| --- | --- | --- | --- |
+| Staging | `docker.io/<org>/arsi-web-<client>:<buildId>` | variable group / staging `.env` | client pipeline on `main` (Tutorial C C.4) |
+| Production | **the same image** (same `<buildId>` tag) | production variable group / `.env` | environment approval, then SSH deploy (Tutorial C C.5–C.6) |
+
+Rules:
+
+- Keep per-environment values in a variable group (Tutorial C C.2) or a secret manager — never in the repo.
+- Changing env = recreating the container, not rebuilding: `docker compose up -d --force-recreate`, then verify `/config.json` (Tutorial B B.10).
+- Staging and production may use different `VITE_MODULES`/`VITE_API_BASE`; never put secrets in `VITE_*` (see Security Checklist).
+- Adopting a new base = a PR that bumps `manifest.json:baseVersion` (§1.2), then release through the pipeline (Tutorial C C.8).
+- Go-live checklist: see **Tutorial B — ✅ Tutorial B go-live checklist**.
+
+## Post-Deploy Smoke Test
+
+Run after every deploy (VM or pipeline), from the VM:
+
+```bash
+BASE=http://localhost:8080
+CLIENT=arsi-web-<client>          # container name (Tutorial B B.6)
+
+# 1. Config matches the environment
+curl -sf "$BASE/config.json" | jq -e '.client and .modules and .apiBase'
+
+# 2. Landing page returns 200
+curl -sI "$BASE/" | head -1
+
+# 3. SPA deep-link fallback (must be 200 + index.html)
+curl -s "$BASE/products/1" | grep -q '<div id="root">'
+
+# 4. Immutable asset cache header
+curl -sI "$BASE/assets/$(curl -s "$BASE/" | grep -o 'assets/index-[^"]*\.js' | head -1 | cut -d/ -f2)" \
+  | grep -i 'cache-control: public, immutable'
+
+# 5. Entrypoint log
+docker logs "$CLIENT" 2>&1 | grep Generated
+```
+
+Set `BASE=https://app.example.com` to verify the public path (proxy + TLS, Tutorial B B.8).
+
+Manual checklist:
+
+- [ ] Login succeeds and every module in `VITE_MODULES` renders.
+- [ ] `client`/`modules`/`apiBase` in `/config.json` match `.env`/the variable group.
+- [ ] Deep links (e.g. `/products/1`) do not 404; the SPA fallback works.
+- [ ] No CORS/4xx/5xx errors in the browser console.
+- [ ] `enableAuditLive` matches the environment.
+- [ ] `/config.json` is not cached by the browser (hard-refresh, then check the `no-store` header).
+- [ ] `docker compose ps` → `running` + `healthy`.
+
+## Security Checklist
+
+| Control | Rule |
+| --- | --- |
+| Secrets | No secrets in `VITE_*` — every value lands in the public `/config.json`. Tokens/passwords live only in service connections/secret managers (Tutorial C C.2). |
+| TLS | Terminated at the host reverse proxy (Tutorial B B.8); the container serves HTTP:80 on `127.0.0.1` only (B.6/B.9); never publish `0.0.0.0:8080`. |
+| Registry token | The VM uses a **read-only** token (Tutorial B B.4); push-capable tokens only in CI; rotate periodically and log in again. |
+| Private base builder | The `<version>-builder` image contains source + `node_modules` — keep it private; only the extension pipeline pulls it. |
+| Image scanning | Scan before promotion: `docker scout cves docker.io/<org>/arsi-web-<client>:<buildId>` (or Trivy); address HIGH/CRITICAL findings. |
+| Runtime hardening | `security_opt: no-new-privileges:true` (Tutorial B B.6); SSH key-only (B.2); `ufw` allows only 22/80/443 (B.9). |
+| Audit | Record the image tag + `baseVersion` + env values for every deploy; `config.json` exposes `client`, `modules`, `apiBase` — make sure none of it is sensitive. |
+
+## Env Reference
+
+Source: `web-container/docker/entrypoint.sh` (runs at container start). Concept summary in §1.3; example `.env`/`compose.yaml` in Tutorial B B.6.
+
+| Env | Default | Purpose | Set in |
+| --- | --- | --- | --- |
+| `VITE_CLIENT` | `base` | `client` value in `/config.json` | `.env` (B.6) / variable group (C.2) |
+| `VITE_MODULES` | `user-management` | CSV of modules to init; names must match folders under `web-modules/modules/` | same |
+| `VITE_API_BASE` | `https://dummyjson.com` | API base URL for `deps.api` and module services | same |
+| `VITE_ENABLE_AUDIT_LIVE` | `true` | `featureFlags.enableAuditLive` flag | same |
+| `VITE_CONFIG_JSON` | — | full `/config.json` override (JSON object); when set, the four envs above are ignored | `.env` / variable group |
+| `CONFIG_FILE` | `/usr/share/nginx/html/config.json` | output config file location | rarely changed (container test/debug) |
+
+Notes:
+
+- `VITE_CONFIG_JSON` always wins; it **must** be a JSON object (starts with `{`, ends with `}`) — otherwise the container fails to start with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`.
+- The defaults above are only entrypoint fallbacks; Tutorial B's `compose.yaml` sets `VITE_ENABLE_AUDIT_LIVE` to `false` when `.env` is empty (production-safe).
+- All modules under `web-modules/modules/` are always bundled (lazy chunks); `VITE_MODULES` only selects which are active at runtime.
+- Container-less dev uses the same envs via `web-container/scripts/dev-config.mjs`.
+
+## Rollback
+
+Matrix per scenario; rollback always points at the original immutable tag — never retag old versions.
+
+| Scenario | Action | Verify |
+| --- | --- | --- |
+| VM Compose container on a bad tag | Set the previous `BUILD_ID` in `.env`, pull + up (Tutorial B B.10) | `docker compose ps`, `curl /config.json` |
+| Bad pipeline deploy | Run the pipeline on the old release ref (Run pipeline → Branch/tag), or deploy the old tag over SSH (Tutorial C C.7) | green run + `/config.json` on the VM |
+| Bad config (image is fine) | Fix `.env`/the variable group, then `docker compose up -d --force-recreate` (Tutorial B B.10) | `/config.json` matches the environment |
+| Bad `baseVersion` adoption | Revert the `baseVersion` PR (rebuild) or deploy the previous `BUILD_ID` (Tutorial C C.7–C.8) | `check:base` passes on rebuild |
+
+Quick commands (VM):
+
+```bash
+cd /opt/arsi-web/<client>
+sed -i 's/^BUILD_ID=.*/BUILD_ID=<previous-tag>/' .env
+docker compose pull
+docker compose up -d
+curl -sf http://localhost:8080/config.json | jq -e '.client and .modules and .apiBase'
+```
+
+- Record the known-good tag for every release (run history / release notes).
+- After rollback, fix `main`; the fix commit produces a new BUILD_ID.
+- Rollback does not delete the bad image from the registry — just stop using it.
+
+## Cheat Sheet
+
+```bash
+# --- Local: build images (workspace root) ---
+ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh                     # base (two images)
+cd web-extension-client-a
+ORG=<org> PULL=1 PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
+
+# --- VM: deploy / update (Tutorial B) ---
+cd /opt/arsi-web/<client>
+docker compose pull && docker compose up -d
+docker compose ps
+curl -sf http://localhost:8080/config.json | jq -e '.client and .modules and .apiBase'
+docker logs arsi-web-<client> 2>&1 | grep Generated
+
+# --- VM: change config without a new image ---
+nano .env && docker compose up -d --force-recreate
+
+# --- VM: rollback ---
+sed -i 's/^BUILD_ID=.*/BUILD_ID=<previous-tag>/' .env
+docker compose pull && docker compose up -d
+
+# --- Azure Pipelines (Tutorial C) ---
+# UI: Pipelines → <pipeline> → Run pipeline → Branch/tag → pick the ref
+az pipelines run --name <client-pipeline-name> --branch main
+az pipelines runs list --top 5
+```
+
+| Looking for | Command / location |
+| --- | --- |
+| Running image tag | `docker inspect --format '{{index .Config.Image}}' arsi-web-<client>` |
+| Active config | `curl -s http://localhost:8080/config.json \| jq .` |
+| Pinned base version | `manifest.json:baseVersion` in the client repo |
+| Pipeline deploy log | Azure DevOps → Pipelines → Runs → pick the run → `Deploy` stage |
+
+## Troubleshooting
+
+This table covers build, config, registry, SSH, and pipeline issues; VM runtime symptoms (502, ports, Certbot) are in Tutorial B B.12.
+
+| Symptom | Cause & fix |
+| --- | --- |
+| `[bootstrap] module "x" … has no entry` | `VITE_MODULES` includes a name that is not a folder under `web-modules/modules/`. Fix the env or add the module to the build. |
+| Module missing even though the env is correct | Module not bundled (stale build) or absent from runtime `config.json`. Check `curl /config.json`, rebuild the image. |
+| Config changes not visible | Browser cache (must be `no-store`) or the container was not recreated. `docker compose up -d --force-recreate`. |
+| Container exits with `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | The `VITE_CONFIG_JSON` value is not a JSON object (truncated, array, or misquoted). Fix it, or unset it to use the individual envs. |
+| App boots with no modules after an override | The `VITE_CONFIG_JSON` is valid but `modules` is empty/missing. Fill in bundled module names; check `curl /config.json`. |
+| `check:base` mismatch | Message `[check:base] baseVersion manifest (x) != base image (y)`. Match `manifest.json:baseVersion` to the base tag, or use the correct `BASE_BUILDER_IMAGE`/rebuild the base. |
+| Base tag `<version>-builder` not found when pulling | That base version was never built/pushed, or `REGISTRY`/`ORG` is wrong. Run `ci/build-base.sh` in the base repo or align `BASE_VERSION`/`manifest.json:baseVersion`. |
+| Docker build fails: module `package.json` not found | A new module was not added to `COPY` in the base repo root `Dockerfile`. Run `npm run check:dockerfile`, add the COPY line. |
+| Extension `npm ci` fails (lockfile) | The extension's `package-lock.json` is out of sync with its `package.json`. Run `npm install` in the extension repo, commit the new lockfile. |
+| `npm ci` fails in CI | Lockfile out of sync (a new module was not `npm install`ed under `web-modules`). Commit the lockfile. |
+| Deep link 404 | `try_files` missing/changed in nginx — make sure `nginx.conf` uses `try_files $uri $uri/ /index.html`. |
+| Stale loader map in the image | The build was invoked outside `npm run build:client` / `npm run build` (the `gen:modules` pre-hook did not run). Use the npm scripts. |
+| Wrong Docker build context (`COPY failed`) | The base must be built from the base repo root; the extension from the extension repo root. The `ci/build-*.sh` scripts already run `docker build` from the right directory. |
+| Asset 404 after deploy | Base path changed? Do not change the Vite `base` without coordination; assets are served from `/assets/`. |
+| `pull access denied` / 401 on a base image | Private base builder/runtime; run `docker login` (CI token) before building the extension. |
+| Engine warning during `npm install` | Local Node newer than target; safe if tests pass. CI/Docker use Node 22. |
+| `Permission denied (publickey)` during SSH deploy | The SSH service connection's public key is not in `~deploy/.ssh/authorized_keys`, or the username is wrong. Check Tutorial C C.2 and Tutorial B B.2; test `ssh deploy@app.example.com`. |
+| `docker compose` not recognized / `unknown shorthand flag` | Compose v2 plugin not installed (only `docker-compose` v1 present). Install `docker-compose-plugin`, then check `docker compose version` (Tutorial B B.3). |
+| `required variable BUILD_ID is missing` on `compose up` | `.env` is empty/not filled in. Set `BUILD_ID` (Tutorial B B.6–B.7); compose uses `${BUILD_ID:?...}`. |
+| Azure pipeline: `Deploy` stage waits for approval | The `arsi-web-client-a-production` environment needs an approver. Approve in Azure DevOps → Environments (Tutorial C C.5). |
+| Azure pipeline: Docker Hub login/push 401 | Wrong service connection/token, or the variable group is not authorized for the pipeline. Check Tutorial C C.2 and Library → Pipeline permissions. |
+| Azure runner cannot SSH to the VM | Port 22 not reachable from the runner, or key/host changed. Check the VM's `ufw`/NSG and test the service connection (Tutorial C C.1/C.6). |
