@@ -766,7 +766,7 @@ Allowed event directions (`CONTRACT §13`):
 | --- | --- |
 | Module emit → extension listen | ✓ |
 | Extension emit → module listen | ✗ (the base must not know about the extension) |
-| Extension emit → extension/container listen | ✓ (namespace `<client>.<entity>.<action>`) |
+| Extension emit → extension listen | ✓ (namespace `<client>.<entity>.<action>`) |
 
 ### Step 5 — Extension tests
 

@@ -766,7 +766,7 @@ Arah event yang diizinkan (`CONTRACT §13`):
 | --- | --- |
 | Modul emit → extension listen | ✓ |
 | Extension emit → modul listen | ✗ (base tidak boleh tahu extension) |
-| Extension emit → extension/container listen | ✓ (namespace `<client>.<entity>.<action>`) |
+| Extension emit → extension listen | ✓ (namespace `<client>.<entity>.<action>`) |
 
 ### Langkah 5 — Test extension
 
