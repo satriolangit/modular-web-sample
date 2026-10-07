@@ -1,6 +1,6 @@
 # Panduan Developer — Dari Nol sampai Kontribusi
 
-Panduan ini menuntun **developer baru** dari laptop kosong sampai pull request (PR) pertama, lalu menjadi rujukan saat mengerjakan tugas sehari-hari. Bekal yang diasumsikan: React hooks dan TypeScript dasar. Arsitektur modular, dependency injection (DI), dan repositori terpisah (monorepo) dijelaskan saat kemunculan pertamanya. Padanan bahasa Inggris dari dokumen ini ada di `DEVELOPER-GUIDE.en.md`.
+Panduan ini menuntun **developer baru** dari laptop kosong sampai pull request (PR) pertama, lalu menjadi rujukan saat mengerjakan tugas sehari-hari. Bekal yang diasumsikan: React hooks dan TypeScript dasar. Arsitektur modular, dependency injection (DI), dan repositori terpisah (multi-repo) dijelaskan saat kemunculan pertamanya. Padanan bahasa Inggris dari dokumen ini ada di `DEVELOPER-GUIDE.en.md`.
 
 Dokumen tetangga:
 
