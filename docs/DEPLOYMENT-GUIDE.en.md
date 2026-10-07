@@ -20,7 +20,7 @@ Conventions: `<...>` is a placeholder to replace; commands are written for bash/
 | Docker Engine | 20+ | multi-stage/multi-target builds; BuildKit not required |
 | Docker Compose plugin | v2 (`docker compose`) | Tutorials B–C; Tutorial A does not use Compose |
 | Git | 2.x | the default `SHA`/`BUILD_ID` comes from `git rev-parse --short HEAD` |
-| Node.js + npm | 22.x + 10+ | only for local `VERIFY=1`; Docker uses `node:22-alpine` internally |
+| Node.js + npm | 22.x + 10+ | for `VERIFY=1` and script version resolution (`node -p`, unless `BASE_VERSION`/`CLIENT_NAME` are passed); Docker uses `node:22-alpine` internally |
 | Docker Hub account | — | Tutorials B–C (push/pull); Tutorial A runs fully local without login |
 | Reverse proxy + TLS | nginx/Traefik/ALB | set up on the host; the container only serves HTTP:80 |
 
@@ -111,7 +111,7 @@ The diagram structure matches `ARCHITECTURE §8`. The runtime target at the end 
 
 **Goal:** build the base and client images on a laptop, run them at `localhost:8080`, and verify `/config.json` — without pushing to a registry. This is the fastest path to test build/deploy changes before touching a server.
 
-Run it from the workspace root (the folder containing `ci/build-base.sh` and `web-extension-client-a/`). Docker must be running; Node 22 + npm are only needed because of `VERIFY=1`. Quick check:
+Run it from the workspace root (the folder containing `ci/build-base.sh` and `web-extension-client-a/`). Docker must be running; Node 22 + npm are needed for `VERIFY=1` and the scripts' version resolution (`node -p`). Quick check:
 
 ```bash
 docker version --format '{{.Server.Version}}'   # Docker Engine is running
@@ -232,7 +232,7 @@ Replace `<sha>` with the value from the A.1 output (defaults to `git rev-parse -
 | `[check:base] baseVersion manifest (0.1.0) != base image (x)` | The local base is not the version pinned by the manifest. Rebuild the base in A.1 with the same version, or align `BASE_VERSION`. |
 | `Cannot connect to the Docker daemon` | Docker Engine is not running — check `docker version`, start Docker Desktop / `systemctl start docker`. |
 | Port 8080 is already in use | Change `-p 8080:80` to `-p 8081:80` and adjust the smoke-test URLs. |
-| `node: command not found` during `VERIFY=1` | Install Node 22, or run with `VERIFY=0` (verification skipped, the image is still built). |
+| `node: command not found` during a build | The scripts call `node -p` unconditionally to read versions, before the `VERIFY` block. Install Node 22, or pass `BASE_VERSION` explicitly (and `CLIENT_NAME` for `build-client.sh`). |
 | `jq: command not found` | Install `jq` (`brew install jq`, `apt install jq`), or replace it with `grep '"client"'`. |
 | `/config.json` still has the old config | The container was not recreated — `docker rm -f arsi-local` then re-run the A.3 command. |
 | Image will not run on a server (`exec format error`) | The image architecture follows the build laptop (e.g. `linux/arm64` on Apple Silicon); CI/production is usually `linux/amd64`. Build via CI or set the matching `--platform`. |

@@ -20,7 +20,7 @@ Konvensi: `<...>` adalah placeholder yang diganti; perintah ditulis untuk bash/z
 | Docker Engine | 20+ | build multi-stage/multi-target; BuildKit tidak wajib |
 | Docker Compose plugin | v2 (`docker compose`) | Tutorial B–C; Tutorial A tidak memakai Compose |
 | Git | 2.x | default `SHA`/`BUILD_ID` diambil dari `git rev-parse --short HEAD` |
-| Node.js + npm | 22.x + 10+ | hanya untuk `VERIFY=1` di lokal; di dalam Docker dipakai `node:22-alpine` |
+| Node.js + npm | 22.x + 10+ | untuk `VERIFY=1` dan resolusi versi skrip (`node -p`, kecuali `BASE_VERSION`/`CLIENT_NAME` diisi); di dalam Docker dipakai `node:22-alpine` |
 | Akun Docker Hub | — | Tutorial B–C (push/pull); Tutorial A berjalan penuh lokal tanpa login |
 | Reverse proxy + TLS | nginx/Traefik/ALB | disiapkan di host; container hanya melayani HTTP:80 |
 
@@ -111,7 +111,7 @@ Struktur diagram sama dengan `ARCHITECTURE §8`. Target runtime di akhir alur: l
 
 **Tujuan:** membangun base image dan client image di laptop, menjalankannya di `localhost:8080`, dan memverifikasi `/config.json` — tanpa push ke registry. Ini jalur tercepat untuk menguji perubahan build/deploy sebelum menyentuh server.
 
-Dijalankan dari root workspace (folder yang memuat `ci/build-base.sh` dan `web-extension-client-a/`). Docker harus berjalan; Node 22 + npm hanya dibutuhkan karena `VERIFY=1`. Cek cepat:
+Dijalankan dari root workspace (folder yang memuat `ci/build-base.sh` dan `web-extension-client-a/`). Docker harus berjalan; Node 22 + npm dibutuhkan untuk `VERIFY=1` dan resolusi versi skrip (`node -p`). Cek cepat:
 
 ```bash
 docker version --format '{{.Server.Version}}'   # Docker Engine aktif
@@ -232,7 +232,7 @@ Ganti `<sha>` dengan nilai dari output A.1 (default `git rev-parse --short HEAD`
 | `[check:base] baseVersion manifest (0.1.0) != base image (x)` | Base lokal bukan versi yang dipin manifest. Build ulang base A.1 dengan versi yang sama, atau samakan `BASE_VERSION`. |
 | `Cannot connect to the Docker daemon` | Docker Engine belum berjalan — cek `docker version`, start Docker Desktop / `systemctl start docker`. |
 | Port 8080 sudah dipakai | Ganti `-p 8080:80` menjadi `-p 8081:80` dan sesuaikan URL smoke test. |
-| `node: command not found` saat `VERIFY=1` | Pasang Node 22, atau jalankan `VERIFY=0` (verifikasi dilewati, image tetap dibangun). |
+| `node: command not found` saat build | Skrip memanggil `node -p` tanpa syarat untuk membaca versi, sebelum blok `VERIFY`. Pasang Node 22, atau isi `BASE_VERSION` eksplisit (dan `CLIENT_NAME` untuk `build-client.sh`). |
 | `jq: command not found` | Pasang `jq` (`brew install jq`, `apt install jq`), atau ganti dengan `grep '"client"'`. |
 | `/config.json` masih berisi config lama | Container belum di-recreate — `docker rm -f arsi-local` lalu jalankan ulang perintah A.3. |
 | Image tidak jalan di server (`exec format error`) | Arsitektur image mengikuti laptop saat build (mis. `linux/arm64` di Apple Silicon); CI/produksi umumnya `linux/amd64`. Bangun lewat CI atau set `--platform` yang sesuai. |
