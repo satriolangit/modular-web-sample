@@ -89,7 +89,7 @@ In production there are **two kinds of repos**: one **base repo** owned by the p
 | `Dockerfile`              | Client image: `FROM` base builder → `FROM` base runtime                               | Client developer |
 | `ci/build-client.sh`      | Client image build + push script                                                       | Client developer |
 
-> **Sample workspace note.** This repo is a sample workspace with a **flat layout**: `web-container/`, `web-modules/`, `web-extension-default/`, `web-extension-template/`, and `web-extension-client-a/` sit side by side in one folder. In production, `web-extension-client-<x>` is the contents of a separate repo `arsi-web-client-<x>`; during development that repo is checked out next to the base repo because path mapping assumes a *sibling* position (`DEPLOYMENT-GUIDE` §3).
+> **Sample workspace note.** This repo is a sample workspace with a **flat layout**: `web-container/`, `web-modules/`, `web-extension-default/`, `web-extension-template/`, and `web-extension-client-a/` sit side by side in one folder. In production, `web-extension-client-<x>` is the contents of a separate repo `arsi-web-client-<x>`; during development that repo is checked out next to the base repo because path mapping assumes a *sibling* position (`DEPLOYMENT-GUIDE` Tutorial A).
 
 ### 2.1 Who Changes What
 

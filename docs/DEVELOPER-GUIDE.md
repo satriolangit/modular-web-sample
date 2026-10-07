@@ -862,7 +862,7 @@ cd ../web-container
 CLIENT=client-<x> npm run link:client && npm run dev
 ```
 
-Build & push image klien memakai `ci/build-client.sh` (base tidak dibangun ulang); langkah lengkapnya di `DEPLOYMENT-GUIDE.md` §3–§5.
+Build & push image klien memakai `ci/build-client.sh` (base tidak dibangun ulang); langkah lengkapnya di `DEPLOYMENT-GUIDE` Tutorial A/B.
 
 ---
 
