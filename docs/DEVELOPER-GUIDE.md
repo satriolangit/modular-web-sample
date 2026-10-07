@@ -310,3 +310,556 @@ flowchart LR
 - **Force-push ke branch bersama** setelah review dimulai — cukup tambah commit baru.
 
 📖 **Konsep:** mengapa extension cukup mengisi slot dan meng-override tanpa menyentuh modul, serta tiga tingkat override → `ARCHITECTURE §4` dan `ARCHITECTURE §7`.
+
+---
+
+## Bab 3 — Membuat Module Baru
+
+🎯 **Tujuan:** modul `order-management` tampil di menu, halamannya bisa dibuka, dan semua test lulus — tanpa menyentuh kode container.
+
+Studi kasus bab ini: modul `order-management`. Dua modul nyata menjadi referensi Anda:
+
+- `web-modules/modules/module-sample/` — kerangka paling ringkas, tetapi semua mekanisme ada (`index.tsx`, `public.ts`, `slots.ts`, `events.ts`, `modals.ts`, `queryKeys.ts`, `types.ts`, `i18n/`, `pages/`, `components/`, `hooks/`, `store/`).
+- `web-modules/modules/user-management/` — contoh CRUD lengkap dengan store, hook, dan komponen.
+
+Aturan utama modul ada di `CONTRACT §1`: modul **tidak boleh** mengimpor modul lain atau extension. Semua yang dibutuhkan datang dari `deps` saat `init(deps)`.
+
+### Langkah 1 — Buat folder dan `package.json`
+
+```bash
+cd web-modules/modules
+mkdir order-management
+```
+
+Struktur yang dihasilkan (relatif terhadap folder modul):
+
+```
+order-management/
+├── package.json
+├── index.tsx           # entry init(deps) — dipanggil container saat boot
+├── public.ts           # kontrak untuk extension
+├── types.ts
+├── slots.ts
+├── events.ts
+├── modals.ts
+├── queryKeys.ts
+├── services/service.order.ts
+├── hooks/useOrder.ts
+├── store/useOrderStore.ts
+├── components/
+├── pages/
+└── i18n/{en,id}.json
+```
+
+`package.json` meniru `module-sample/package.json`; yang berubah hanya `name`:
+
+```json
+{
+  "name": "@arsi/module-order-management",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "public.ts",
+  "types": "public.ts",
+  "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "dependencies": {
+    "@arsi/shared": "^0.1.0",
+    "axios": "~1.7.9",
+    "react-router-dom": "^6.30.6",
+    "zustand": "^5.0.15"
+  }
+}
+```
+
+`name` **wajib** mengikuti `@arsi/module-<nama folder>`. `npm run gen:modules` memvalidasi konvensi ini dan langsung gagal bila tidak cocok. `react`/`react-dom` selalu `peerDependencies` (`CONTRACT §1.6`).
+
+### Langkah 2 — Isi domain: tipe, service, dan query key
+
+- `types.ts` — tipe domain modul (`Order`, `OrderListResponse`, `CreateOrderInput`).
+- `services/service.order.ts` — **factory function** yang menerima `AxiosInstance`; tidak mengakses `deps`, React, atau React Query:
+
+```ts
+import type { AxiosInstance } from 'axios';
+import type { Order, OrderListResponse } from '../types';
+
+export function createOrderService(api: AxiosInstance) {
+  return {
+    async list(params: { limit?: number; skip?: number } = {}): Promise<OrderListResponse> {
+      const { limit = 10, skip = 0 } = params;
+      const res = await api.get<OrderListResponse>('/orders', { params: { limit, skip } });
+      return res.data;
+    },
+  };
+}
+```
+
+- `queryKeys.ts` — root key **wajib** `['<module>', '<entity>']`:
+
+```ts
+export const orderKeys = {
+  all: ['order-management', 'order'] as const,
+  lists: () => [...orderKeys.all, 'list'] as const,
+  list: (params?: { limit?: number; skip?: number }) =>
+    [...orderKeys.lists(), params ?? {}] as const,
+  detail: (id: number) => [...orderKeys.all, 'detail', id] as const,
+};
+```
+
+Service yang perlu di-invalidate extension **wajib** diekspor lewat `public.ts`. Aturan lengkap: `CONTRACT §4` (service registry) dan `CONTRACT §5` (data fetching).
+
+### Langkah 3 — `index.tsx`: satu titik masuk `init(deps)`
+
+```tsx
+import axios from 'axios';
+import type { Deps } from '@arsi/container';
+
+import en from './i18n/en.json';
+import id from './i18n/id.json';
+import { OrderListPage } from './pages/OrderListPage';
+
+let initialized = false;
+
+export default async function init(deps: Deps): Promise<void> {
+  if (initialized) {
+    return; // React StrictMode bisa memanggil init dua kali
+  }
+  initialized = true;
+
+  deps.i18n.addResourceBundle('en', 'order-management', en, true, true);
+  deps.i18n.addResourceBundle('id', 'order-management', id, true, true);
+
+  const orderClient = axios.create({
+    baseURL: deps.config.apiBase,
+    timeout: 8000,
+  });
+  deps.apiRegistry.register('order', orderClient);
+
+  deps.menu.register({
+    path: '/orders',
+    label: 'menu.orders',
+    namespace: 'order-management',
+    order: 30,
+  });
+
+  deps.routes.add({
+    path: '/orders',
+    element: <OrderListPage />,
+    meta: { group: 'order', module: 'order-management' },
+  });
+}
+```
+
+Aturan `init`:
+
+- **Semua** pendaftaran (i18n, service, menu, route, modal, slot, event) terjadi di dalam `init`, bukan di top-level file.
+- `init` **wajib idempotent** — perhatikan guard `initialized`; registry container melempar error untuk pendaftaran duplikat.
+- Nama service mengikuti konvensi `CONTRACT §4.6` (modul `order-management` → service `order`).
+- Axios client hanya dibuat di sini; komponen mengambilnya lewat hook, bukan `import axios`.
+
+Halaman memakai komponen `@arsi/shared` dan hook modul:
+
+```tsx
+export function OrderListPage() {
+  const { t } = useTranslation('order-management');
+  const { data, isLoading } = useOrderList();
+  // PageHeader + DataTable dari @arsi/shared
+}
+```
+
+Hook menyusun service + React Query — import `useQuery`/`useMutation` selalu dari `@arsi/container`:
+
+```ts
+import { useMemo } from 'react';
+import { useApiRegistry, useQuery } from '@arsi/container';
+
+import { orderKeys } from '../queryKeys';
+import { createOrderService } from '../services/service.order';
+
+function useOrderService() {
+  const apiRegistry = useApiRegistry();
+  return useMemo(() => createOrderService(apiRegistry.get('order')), [apiRegistry]);
+}
+
+export function useOrderList() {
+  const service = useOrderService();
+  return useQuery({ queryKey: orderKeys.list(), queryFn: () => service.list() });
+}
+```
+
+### Langkah 4 — `slots.ts`, `events.ts`, `modals.ts`
+
+Kalau modul menyediakan extension point, deklarasikan di sini:
+
+```ts
+// slots.ts — titik sambung untuk extension
+export const orderSlots = {
+  orderTableActions: 'order-management.orderTableActions',
+} as const;
+
+// events.ts — komunikasi lintas modul (modul hanya emit)
+export const orderEvents = {
+  created: 'order-management.order.created',
+} as const;
+
+export interface OrderCreatedPayload {
+  id: number;
+}
+
+// modals.ts — modal yang bisa dibuka lewat deps.modal
+export const orderModals = {
+  create: 'order-management.create',
+} as const;
+```
+
+Konvensi nama: slot `<module>.<slotName>`, event `<module>.<entity>.<action>`, modal `<module>.<action>` (`CONTRACT §11`–`§13`). Komponen modul mengonsumsi slot dengan `useSlot`:
+
+```tsx
+const Actions = useSlot(orderSlots.orderTableActions);
+```
+
+Daftarkan modal dan event listener di `init`:
+
+```tsx
+deps.modal.register(orderModals.create, CreateOrderDialog);
+
+deps.events.on<OrderCreatedPayload>(orderEvents.created, (payload) => {
+  deps.logger.info('order-management: order dibuat', payload);
+});
+```
+
+### Langkah 5 — i18n: `i18n/en.json` dan `i18n/id.json`
+
+Namespace = nama folder modul; kunci deskriptif, bukan `text1`:
+
+```json
+{
+  "title": "Pesanan",
+  "menu": { "orders": "Pesanan" },
+  "empty": "Belum ada pesanan"
+}
+```
+
+Kedua file wajib ada — paritas ID/EN juga berlaku di aplikasi.
+
+### Langkah 6 — `public.ts`: kontrak untuk extension
+
+Hanya yang diekspor di sini yang boleh dipakai extension:
+
+```ts
+export { OrderListPage } from './pages/OrderListPage';
+export { useOrderList } from './hooks/useOrder';
+export { createOrderService, type OrderService } from './services/service.order';
+export { orderKeys } from './queryKeys';
+export { orderSlots } from './slots';
+export { orderEvents } from './events';
+export { orderModals } from './modals';
+export type { Order, OrderListResponse, CreateOrderInput } from './types';
+```
+
+Apa pun yang tidak diekspor di sini dianggap internal — extension **dilarang** mengimpornya (`CONTRACT §1.4`).
+
+### Langkah 7 — Wiring: loader map, Dockerfile, dan `config.modules`
+
+1. Generate loader map dari `web-container`:
+
+```bash
+cd web-container
+npm run gen:modules
+```
+
+`gen:modules` menulis `src/bootstrap/moduleLoaders.generated.ts` dari `package.json` semua modul. **Jangan** mengedit file generated manual; pre-hooks (`predev`, `pretypecheck`, `pretest`, `prebuild`) menjalankannya otomatis.
+
+2. Tambahkan baris `COPY` modul baru di `Dockerfile` root repo base, sebelum `npm ci` (ada komentar pengingat di sana):
+
+```dockerfile
+COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/
+```
+
+3. Jalankan guard Dockerfile:
+
+```bash
+cd web-container
+npm run check:dockerfile
+```
+
+4. Daftarkan modul agar ikut boot. Di dev lewat `VITE_MODULES`/`public/config.json`; di produksi lewat `config.modules`. Modul yang tidak terdaftar tidak pernah di-`init` sehingga menu dan route-nya tidak ada.
+
+5. Perbarui lockfile workspace dan commit:
+
+```bash
+cd web-modules
+npm install        # workspace menautkan @arsi/module-order-management
+```
+
+### Langkah 8 — Test dan verifikasi
+
+Modul **wajib** punya test untuk public API-nya (`CONTRACT §17`). Minimal test `init(deps)`: pakai `deps` palsu + `vi.resetModules()` agar guard `initialized` tidak bocor antar test — lihat `web-modules/modules/module-sample/index.test.ts`. Playbook lengkap ada di `GUIDE §6`.
+
+```bash
+cd web-modules
+npm run typecheck && npm test -- modules/order-management && npm run lint
+
+cd ../web-container
+npm run check:dockerfile && npm run typecheck && npm test && npm run build
+```
+
+Restart dev server setelah menambah modul (loader map dibaca saat start):
+
+```bash
+cd web-container
+npm run dev
+# buka http://localhost:5173 → menu Orders muncul
+```
+
+✅ **Checkpoint Bab 3**
+
+- [ ] Menu sidebar memuat Orders dan `/orders` merender halaman modul.
+- [ ] Baris `COPY` modul baru ada di `Dockerfile` dan `npm run check:dockerfile` lulus.
+- [ ] `npm run typecheck && npm test && npm run lint` lulus di `web-modules`; test `init` modul baru ada.
+- [ ] Modul terdaftar di `config.modules`/`VITE_MODULES`; boot bersih tanpa error console.
+
+⚠️ **Jebakan umum Bab 3**
+
+- **Lupa baris `COPY` di Dockerfile.** Dev jalan, tetapi build image gagal karena `npm ci` tidak menemukan package workspace. `npm run check:dockerfile` menangkapnya lebih awal.
+- **Lupa `npm install` lockfile.** Perubahan `package-lock.json` wajib ikut ter-commit; tanpa itu `npm ci` di Docker/CI gagal.
+- **Nama package tidak mengikuti `@arsi/module-<folder>`.** `gen:modules` gagal dengan pesan konvensi.
+- **Mendaftarkan sesuatu di top-level file**, bukan di `init` — modul tidak boleh berefek samping saat di-import.
+- **Lupa restart dev server atau lupa daftar di `config.modules`.** Loader map statis; modul tak terdaftar tidak di-`init`.
+- **Mengedit `moduleLoaders.generated.ts` manual** — file generated; perubahan hilang saat regenerate.
+
+📖 **Konsep:** bagaimana container menemukan dan meng-init modul → `ARCHITECTURE §4`–`§5`; aturan dependensi → `CONTRACT §1`.
+
+---
+
+## Bab 4 — Membuat Extension
+
+🎯 **Tujuan:** extension klien aktif menyesuaikan aplikasi — mengisi slot, meng-override route dengan guard, dan menambah service — tanpa mengubah satu file modul pun.
+
+Extension adalah repo `web-extension-client-<x>` dengan satu entry: default export `init(deps)` di `src/index.tsx`. Bentuk nyatanya ada di `web-extension-client-a/`:
+
+```
+web-extension-client-a/
+├── manifest.json                # identitas klien + baseVersion (pin exact)
+├── aliases.cjs / tsconfig.json   # alias ke public.ts modul yang dipakai
+└── src/
+    ├── index.tsx             # init(deps)
+    ├── components/           # komponen khusus klien
+    ├── overrides/<module>/   # halaman pengganti
+    ├── hooks/                # wrapper service
+    └── i18n/{en,id}.json     # namespace client-a
+```
+
+`manifest.json` memuat `client`, `baseVersion` (exact), `modules`, `shared`, dan `overrides`:
+
+```json
+{
+  "client": "client-a",
+  "baseVersion": "0.1.0",
+  "modules": { "user-management": "^0.1.0", "module-sample": "^0.1.0" },
+  "shared": "^0.1.0",
+  "overrides": ["user-management", "module-sample"]
+}
+```
+
+Repo extension **tidak** membawa `web-container`/`web-modules`; keduanya datang dari base image (`ARCHITECTURE §8`).
+
+Urutan usaha selalu dari yang paling ringan. Penjelasan tiap level beserta sifatnya ada di `ARCHITECTURE §7`:
+
+| Kebutuhan | Level | API |
+| --- | --- | --- |
+| Tambah tombol/kolom di UI modul | 1 — slot | `deps.slots.register` |
+| Ganti seluruh halaman | 2 — route override | `deps.routes.override` |
+| Ubah aturan bisnis service | 3 — service wrapper | factory modul dibungkus di hook extension |
+
+### Langkah 1 — Level 1: isi slot
+
+Modul mendeklarasikan slot di `slots.ts` dan mengekspornya di `public.ts` (contoh: `sampleSlots.overviewPanel`). Extension mengisinya di `init` (`src/index.tsx:70`):
+
+```tsx
+import { sampleSlots } from '@arsi/module-module-sample';
+
+deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
+```
+
+- Komponen slot menerima props yang disepakati modul; cek `public.ts` modul untuk tipenya.
+- Satu slot hanya boleh diisi satu komponen — pendaftaran kedua melempar error.
+- Slot bersifat **aditif**: menambah, bukan mengganti. Untuk mengganti perilaku, naik ke level berikutnya.
+
+### Langkah 2 — Level 2: route override dengan guard
+
+`override` mengganti **seluruh entry** route (sertakan `meta` lagi) dan melempar error bila path belum terdaftar. Karena itu `client-a` memakai helper `overrideIfPresent` (`src/index.tsx:20-30`):
+
+```tsx
+function overrideIfPresent(
+  deps: Deps,
+  path: string,
+  definition: Parameters<Deps['routes']['override']>[1],
+): void {
+  if (!deps.routes.has(path)) {
+    deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
+    return;
+  }
+  deps.routes.override(path, definition);
+}
+```
+
+Pemakaian:
+
+```tsx
+overrideIfPresent(deps, '/users/:id', {
+  element: <ClientAUserDetail />,
+  meta: { group: 'user', module: 'user-management' },
+});
+```
+
+Guard **wajib** untuk route milik modul yang bisa dinonaktifkan (`CONTRACT §12.4`). Tanpa guard, mematikan modul lewat `config.modules` membuat boot gagal dengan `[routes] cannot override unknown route`. Urutan init menolong: extension selalu init **setelah** semua modul, jadi hasil `routes.has` sudah final. Extension juga boleh menambah route baru dengan `deps.routes.add` — sertakan `meta.module`.
+
+### Langkah 3 — Level 3: service wrapper
+
+Extension **tidak boleh** meng-override service core (`auth`, `user`, `order`). Pola yang benar: daftarkan service baru ber-namespace `<client>.<service>` (`src/index.tsx:56-60`):
+
+```tsx
+const auditClient = axios.create({ baseURL: '/api/audit-client-a', timeout: 5000 });
+deps.apiRegistry.register('client-a.audit', auditClient);
+```
+
+Bila perlu mengubah logic service modul, bungkus factory-nya di hook milik extension — jangan menyentuh instance yang didaftarkan modul:
+
+```ts
+const service = useMemo(() => {
+  const base = createSampleService(apiRegistry.get('module-sample'));
+  return {
+    ...base,
+    async getUser(userId: number) {
+      if (userId > 3) throw new Error('client-a: hanya user 1-3 yang boleh diakses');
+      return base.getUser(userId);
+    },
+  };
+}, [apiRegistry]);
+```
+
+Contoh hidup: `web-extension-client-a/src/hooks/useClientASample.ts`. Aturan lengkap: `CONTRACT §4`.
+
+### Langkah 4 — i18n dan event
+
+Dua penyesuaian yang hampir selalu dipakai:
+
+```tsx
+// namespace milik klien
+deps.i18n.addResourceBundle('en', 'client-a', en, true, true);
+
+// menimpa label modul (deep merge + overwrite)
+deps.i18n.addResourceBundle('en', 'user-management', { title: 'Client A Users' }, true, true);
+
+// mendengar event modul (arah yang diizinkan)
+deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
+  void deps.queryClient.invalidateQueries({ queryKey: userKeys.detail(payload.id) });
+});
+```
+
+Keduanya berasal dari `src/index.tsx`: i18n di `:38-54`, event listener di `:78-81`.
+
+Arah event yang diizinkan (`CONTRACT §13`):
+
+| Arah | Boleh? |
+| --- | --- |
+| Modul emit → extension listen | ✓ |
+| Extension emit → modul listen | ✗ (base tidak boleh tahu extension) |
+| Extension emit → extension/container listen | ✓ (namespace `<client>.<entity>.<action>`) |
+
+### Langkah 5 — Test extension
+
+Test untuk override **wajib** ada. Pola di `web-extension-client-a/src/__tests__/init.test.ts`: `createFakeDeps()` + `vi.resetModules()` + dynamic import, lalu periksa pemanggilan registry:
+
+```ts
+expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.anything());
+expect(routes.override).toHaveBeenCalledWith(
+  '/users/:id',
+  expect.objectContaining({ element: expect.anything() }),
+);
+```
+
+Verifikasi:
+
+```bash
+cd web-extension-client-a
+npm run typecheck && npm test && npm run lint
+```
+
+Saat extension pertama kali mengimpor sebuah modul, tambahkan alias `@arsi/module-<folder>` di `aliases.cjs` + `tsconfig.json` extension (lihat `web-extension-client-a/aliases.cjs`).
+
+### Langkah 6 — Lihat override di dev
+
+```bash
+cd web-container
+CLIENT=client-a npm run link:client   # symlink current-client -> ../web-extension-client-a
+npm run dev                          # http://localhost:5173
+readlink current-client              # pastikan menunjuk extension yang benar
+```
+
+Perubahan di `src/` extension langsung hot-reload; **restart** dev server saat mengganti klien.
+
+✅ **Checkpoint Bab 4**
+
+- [ ] Slot/panel extension muncul di halaman modul tanpa satu file modul pun berubah.
+- [ ] Route override terlihat; dengan modul target dinonaktifkan, boot tetap jalan dan guard menulis warning.
+- [ ] `npm run typecheck && npm test && npm run lint` lulus di repo extension.
+- [ ] Tidak ada service core yang di-override; service baru ber-namespace `client-<x>.<service>`.
+
+⚠️ **Jebakan umum Bab 4**
+
+- **Override route modul opsional tanpa guard** → boot gagal `[routes] cannot override unknown route` (`CONTRACT §12.4`).
+- **Mengimpor file internal modul** (`pages/...`, `store/...`) alih-alih `@arsi/module-<folder>` (`public.ts`) — pelanggaran kontrak.
+- **Mendaftarkan service dengan nama core** (`user`, `auth`) — pasti bentrok; selalu pakai namespace klien.
+- **Lupa `meta` saat override** — atribusi modul hilang karena override mengganti seluruh entry.
+- **Menyentuh kode modul untuk kebutuhan klien.** Kebutuhan klien diselesaikan di extension; perubahan modul dikirim sebagai PR ke repo base.
+- **Lupa menambah alias modul** saat override pertama kali — typecheck/test extension gagal resolve.
+
+📖 **Konsep:** tiga level override, sifat aditif vs invasif, dan guard module opsional → `ARCHITECTURE §7`.
+
+### Membuat repo client baru dari template
+
+Dipakai saat folder/repo `web-extension-client-<x>` belum ada. Jalankan dari repo base.
+
+1. Buat repo kosong `arsi-web-client-<x>` di GitHub org (mis. `satriolangit`).
+
+2. Salin template — folder klien harus sibling `web-container`/`web-modules`:
+
+```bash
+cd arsi-web-base
+cp -R web-extension-template web-extension-client-<x>
+rm -rf web-extension-client-<x>/node_modules
+```
+
+3. Sesuaikan identitas klien:
+   - `package.json`: `name` → `@arsi/extension-client-<x>`.
+   - `manifest.json`: `client` → `client-<x>` (mis. `client-bca`), `baseVersion` → tag base saat ini (exact, tanpa `^`), lalu `modules`/`shared`/`overrides` sesuai kebutuhan. Pin yang salah ditolak `npm run check:base` saat build image.
+
+4. Jadikan repo Git sendiri, lalu push:
+
+```bash
+cd web-extension-client-<x>
+git init -b main
+git add .
+git commit -m "feat: initial extension client-<x>"
+git remote add origin <git-url-arsi-web-client-<x>>
+git push -u origin main
+```
+
+5. Pastikan folder klien tidak bocor ke repo base:
+   - `.git/info/exclude` repo base memuat `web-extension-*/` (dibuat di `GUIDE §0`).
+   - Verifikasi: `cd ..` lalu `git status` harus **clean**, dan `git check-ignore -v web-extension-client-<x>/` menunjuk `.git/info/exclude`.
+   - Ignore hanya berlaku untuk file **untracked**; kalau terlanjur ter-`git add`, keluarkan dengan `git rm -r --cached web-extension-client-<x>`. Jangan pakai `git add -f`.
+   - `web-extension-default/` dan `web-extension-template/` sengaja tetap tracked di repo base.
+
+6. Coba di lokal (opsional):
+
+```bash
+cd web-extension-client-<x>
+npm ci
+cd ../web-container
+CLIENT=client-<x> npm run link:client && npm run dev
+```
+
+Build & push image klien memakai `ci/build-client.sh` (base tidak dibangun ulang); langkah lengkapnya di `DEPLOYMENT-GUIDE.md` §3–§5.

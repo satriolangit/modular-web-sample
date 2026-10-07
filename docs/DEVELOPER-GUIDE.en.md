@@ -310,3 +310,556 @@ flowchart LR
 - **Force-pushing a shared branch** after review starts — just add another commit.
 
 📖 **Concept:** why an extension can fill slots and override routes without touching modules, and the three override levels → `ARCHITECTURE §4` and `ARCHITECTURE §7`.
+
+---
+
+## Chapter 3 — Creating a New Module
+
+🎯 **Goal:** the `order-management` module appears in the menu, its page renders, and every test passes — without touching container code.
+
+This chapter's case study is the `order-management` module. Two real modules are your references:
+
+- `web-modules/modules/module-sample/` — the leanest skeleton, yet every mechanism is present (`index.tsx`, `public.ts`, `slots.ts`, `events.ts`, `modals.ts`, `queryKeys.ts`, `types.ts`, `i18n/`, `pages/`, `components/`, `hooks/`, `store/`).
+- `web-modules/modules/user-management/` — a full CRUD example with a store, hooks, and components.
+
+The main module rule is in `CONTRACT §1`: a module **must not** import another module or an extension. Everything it needs arrives through `deps` at `init(deps)`.
+
+### Step 1 — Create the folder and `package.json`
+
+```bash
+cd web-modules/modules
+mkdir order-management
+```
+
+The resulting structure (relative to the module folder):
+
+```
+order-management/
+├── package.json
+├── index.tsx           # entry init(deps) — called by the container at boot
+├── public.ts           # contract for extensions
+├── types.ts
+├── slots.ts
+├── events.ts
+├── modals.ts
+├── queryKeys.ts
+├── services/service.order.ts
+├── hooks/useOrder.ts
+├── store/useOrderStore.ts
+├── components/
+├── pages/
+└── i18n/{en,id}.json
+```
+
+`package.json` copies `module-sample/package.json`; only `name` changes:
+
+```json
+{
+  "name": "@arsi/module-order-management",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "public.ts",
+  "types": "public.ts",
+  "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "dependencies": {
+    "@arsi/shared": "^0.1.0",
+    "axios": "~1.7.9",
+    "react-router-dom": "^6.30.6",
+    "zustand": "^5.0.15"
+  }
+}
+```
+
+`name` **must** follow `@arsi/module-<folder name>`. `npm run gen:modules` validates this convention and fails immediately on a mismatch. `react`/`react-dom` are always `peerDependencies` (`CONTRACT §1.6`).
+
+### Step 2 — Fill in the domain: types, service, and query keys
+
+- `types.ts` — the module's domain types (`Order`, `OrderListResponse`, `CreateOrderInput`).
+- `services/service.order.ts` — a **factory function** that receives an `AxiosInstance`; it never touches `deps`, React, or React Query:
+
+```ts
+import type { AxiosInstance } from 'axios';
+import type { Order, OrderListResponse } from '../types';
+
+export function createOrderService(api: AxiosInstance) {
+  return {
+    async list(params: { limit?: number; skip?: number } = {}): Promise<OrderListResponse> {
+      const { limit = 10, skip = 0 } = params;
+      const res = await api.get<OrderListResponse>('/orders', { params: { limit, skip } });
+      return res.data;
+    },
+  };
+}
+```
+
+- `queryKeys.ts` — the root key **must** be `['<module>', '<entity>']`:
+
+```ts
+export const orderKeys = {
+  all: ['order-management', 'order'] as const,
+  lists: () => [...orderKeys.all, 'list'] as const,
+  list: (params?: { limit?: number; skip?: number }) =>
+    [...orderKeys.lists(), params ?? {}] as const,
+  detail: (id: number) => [...orderKeys.all, 'detail', id] as const,
+};
+```
+
+A service an extension may need to invalidate **must** be exported through `public.ts`. Full rules: `CONTRACT §4` (service registry) and `CONTRACT §5` (data fetching).
+
+### Step 3 — `index.tsx`: the single `init(deps)` entry point
+
+```tsx
+import axios from 'axios';
+import type { Deps } from '@arsi/container';
+
+import en from './i18n/en.json';
+import id from './i18n/id.json';
+import { OrderListPage } from './pages/OrderListPage';
+
+let initialized = false;
+
+export default async function init(deps: Deps): Promise<void> {
+  if (initialized) {
+    return; // React StrictMode can call init twice
+  }
+  initialized = true;
+
+  deps.i18n.addResourceBundle('en', 'order-management', en, true, true);
+  deps.i18n.addResourceBundle('id', 'order-management', id, true, true);
+
+  const orderClient = axios.create({
+    baseURL: deps.config.apiBase,
+    timeout: 8000,
+  });
+  deps.apiRegistry.register('order', orderClient);
+
+  deps.menu.register({
+    path: '/orders',
+    label: 'menu.orders',
+    namespace: 'order-management',
+    order: 30,
+  });
+
+  deps.routes.add({
+    path: '/orders',
+    element: <OrderListPage />,
+    meta: { group: 'order', module: 'order-management' },
+  });
+}
+```
+
+`init` rules:
+
+- **Every** registration (i18n, service, menu, route, modal, slot, event) happens inside `init`, never at file top level.
+- `init` **must be idempotent** — note the `initialized` guard; the container registries throw on duplicate registration.
+- The service name follows `CONTRACT §4.6` (module `order-management` → service `order`).
+- The axios client is created here only; components get it through hooks, never via `import axios`.
+
+Pages use `@arsi/shared` components and module hooks:
+
+```tsx
+export function OrderListPage() {
+  const { t } = useTranslation('order-management');
+  const { data, isLoading } = useOrderList();
+  // PageHeader + DataTable from @arsi/shared
+}
+```
+
+Hooks compose the service + React Query — always import `useQuery`/`useMutation` from `@arsi/container`:
+
+```ts
+import { useMemo } from 'react';
+import { useApiRegistry, useQuery } from '@arsi/container';
+
+import { orderKeys } from '../queryKeys';
+import { createOrderService } from '../services/service.order';
+
+function useOrderService() {
+  const apiRegistry = useApiRegistry();
+  return useMemo(() => createOrderService(apiRegistry.get('order')), [apiRegistry]);
+}
+
+export function useOrderList() {
+  const service = useOrderService();
+  return useQuery({ queryKey: orderKeys.list(), queryFn: () => service.list() });
+}
+```
+
+### Step 4 — `slots.ts`, `events.ts`, `modals.ts`
+
+When a module offers extension points, declare them here:
+
+```ts
+// slots.ts — connection points for extensions
+export const orderSlots = {
+  orderTableActions: 'order-management.orderTableActions',
+} as const;
+
+// events.ts — cross-module communication (the module only emits)
+export const orderEvents = {
+  created: 'order-management.order.created',
+} as const;
+
+export interface OrderCreatedPayload {
+  id: number;
+}
+
+// modals.ts — modals anyone can open through deps.modal
+export const orderModals = {
+  create: 'order-management.create',
+} as const;
+```
+
+Naming conventions: slot `<module>.<slotName>`, event `<module>.<entity>.<action>`, modal `<module>.<action>` (`CONTRACT §11`–`§13`). Module components consume a slot with `useSlot`:
+
+```tsx
+const Actions = useSlot(orderSlots.orderTableActions);
+```
+
+Register the modal and event listener in `init`:
+
+```tsx
+deps.modal.register(orderModals.create, CreateOrderDialog);
+
+deps.events.on<OrderCreatedPayload>(orderEvents.created, (payload) => {
+  deps.logger.info('order-management: order created', payload);
+});
+```
+
+### Step 5 — i18n: `i18n/en.json` and `i18n/id.json`
+
+The namespace is the module folder name; keys are descriptive, not `text1`:
+
+```json
+{
+  "title": "Orders",
+  "menu": { "orders": "Orders" },
+  "empty": "No orders found"
+}
+```
+
+Both files are required — ID/EN parity applies to the app too.
+
+### Step 6 — `public.ts`: the contract for extensions
+
+Only what is exported here may be used by an extension:
+
+```ts
+export { OrderListPage } from './pages/OrderListPage';
+export { useOrderList } from './hooks/useOrder';
+export { createOrderService, type OrderService } from './services/service.order';
+export { orderKeys } from './queryKeys';
+export { orderSlots } from './slots';
+export { orderEvents } from './events';
+export { orderModals } from './modals';
+export type { Order, OrderListResponse, CreateOrderInput } from './types';
+```
+
+Anything not exported here is internal — extensions are **forbidden** from importing it (`CONTRACT §1.4`).
+
+### Step 7 — Wiring: loader map, Dockerfile, and `config.modules`
+
+1. Generate the loader map from `web-container`:
+
+```bash
+cd web-container
+npm run gen:modules
+```
+
+`gen:modules` writes `src/bootstrap/moduleLoaders.generated.ts` from every module's `package.json`. **Never** edit the generated file by hand; the pre-hooks (`predev`, `pretypecheck`, `pretest`, `prebuild`) run it automatically.
+
+2. Add the `COPY` line for the new module in the base repo root `Dockerfile`, before `npm ci` (a reminder comment sits there):
+
+```dockerfile
+COPY web-modules/modules/order-management/package.json ./web-modules/modules/order-management/
+```
+
+3. Run the Dockerfile guard:
+
+```bash
+cd web-container
+npm run check:dockerfile
+```
+
+4. Register the module so it boots. In dev via `VITE_MODULES`/`public/config.json`; in production via `config.modules`. An unlisted module is never `init`ed, so its menu and routes do not exist.
+
+5. Update the workspace lockfile and commit:
+
+```bash
+cd web-modules
+npm install        # the workspace links @arsi/module-order-management
+```
+
+### Step 8 — Tests and verification
+
+A module **must** have tests for its public API (`CONTRACT §17`). At minimum, test `init(deps)`: use a fake `deps` + `vi.resetModules()` so the `initialized` guard does not leak between tests — see `web-modules/modules/module-sample/index.test.ts`. The full playbook is in `GUIDE §6`.
+
+```bash
+cd web-modules
+npm run typecheck && npm test -- modules/order-management && npm run lint
+
+cd ../web-container
+npm run check:dockerfile && npm run typecheck && npm test && npm run build
+```
+
+Restart the dev server after adding a module (the loader map is read at start):
+
+```bash
+cd web-container
+npm run dev
+# open http://localhost:5173 → the Orders menu appears
+```
+
+✅ **Chapter 3 checkpoint**
+
+- [ ] The sidebar lists Orders and `/orders` renders the module page.
+- [ ] The new module's `COPY` line is in the `Dockerfile` and `npm run check:dockerfile` passes.
+- [ ] `npm run typecheck && npm test && npm run lint` passes in `web-modules`; an `init` test for the new module exists.
+- [ ] The module is listed in `config.modules`/`VITE_MODULES`; boot is clean with no console errors.
+
+⚠️ **Chapter 3 common pitfalls**
+
+- **Forgetting the `COPY` line in the Dockerfile.** Dev works, but the image build fails because `npm ci` cannot find the workspace package. `npm run check:dockerfile` catches it early.
+- **Forgetting `npm install` on the lockfile.** The `package-lock.json` change must be committed; without it, `npm ci` in Docker/CI fails.
+- **A package name that does not follow `@arsi/module-<folder>`.** `gen:modules` fails with the convention error.
+- **Registering something at file top level** instead of inside `init` — a module must have no side effects when imported.
+- **Forgetting to restart the dev server or to list the module in `config.modules`.** The loader map is static; an unlisted module is never `init`ed.
+- **Editing `moduleLoaders.generated.ts` by hand** — it is generated; changes are lost on regenerate.
+
+📖 **Concept:** how the container discovers and inits modules → `ARCHITECTURE §4`–`§5`; dependency rules → `CONTRACT §1`.
+
+---
+
+## Chapter 4 — Creating an Extension
+
+🎯 **Goal:** the active client's extension customizes the app — fills a slot, overrides a route with a guard, and adds a service — without changing a single module file.
+
+An extension is a `web-extension-client-<x>` repo with one entry: the default export `init(deps)` in `src/index.tsx`. Its real shape lives in `web-extension-client-a/`:
+
+```
+web-extension-client-a/
+├── manifest.json                # client identity + baseVersion (exact pin)
+├── aliases.cjs / tsconfig.json   # aliases to the public.ts of modules in use
+└── src/
+    ├── index.tsx             # init(deps)
+    ├── components/           # client-specific components
+    ├── overrides/<module>/   # replacement pages
+    ├── hooks/                # service wrappers
+    └── i18n/{en,id}.json     # the client-a namespace
+```
+
+`manifest.json` holds `client`, `baseVersion` (exact), `modules`, `shared`, and `overrides`:
+
+```json
+{
+  "client": "client-a",
+  "baseVersion": "0.1.0",
+  "modules": { "user-management": "^0.1.0", "module-sample": "^0.1.0" },
+  "shared": "^0.1.0",
+  "overrides": ["user-management", "module-sample"]
+}
+```
+
+An extension repo **does not** carry `web-container`/`web-modules`; both come from the base image (`ARCHITECTURE §8`).
+
+Always work from the lightest level. Each level and its nature is explained in `ARCHITECTURE §7`:
+
+| Need | Level | API |
+| --- | --- | --- |
+| Add a button/column to module UI | 1 — slot | `deps.slots.register` |
+| Replace a whole page | 2 — route override | `deps.routes.override` |
+| Change a service's business rule | 3 — service wrapper | module factory wrapped in an extension hook |
+
+### Step 1 — Level 1: fill a slot
+
+A module declares a slot in `slots.ts` and exports it in `public.ts` (example: `sampleSlots.overviewPanel`). The extension fills it in `init` (`src/index.tsx:70`):
+
+```tsx
+import { sampleSlots } from '@arsi/module-module-sample';
+
+deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
+```
+
+- A slot component receives props agreed with the module; check the module's `public.ts` for their type.
+- A slot may only be filled once — the second registration throws.
+- Slots are **additive**: they add, they do not replace. To change behavior, move to the next level.
+
+### Step 2 — Level 2: route override with a guard
+
+`override` replaces the **whole route entry** (include `meta` again) and throws when the path is not registered. That is why `client-a` uses the `overrideIfPresent` helper (`src/index.tsx:20-30`):
+
+```tsx
+function overrideIfPresent(
+  deps: Deps,
+  path: string,
+  definition: Parameters<Deps['routes']['override']>[1],
+): void {
+  if (!deps.routes.has(path)) {
+    deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
+    return;
+  }
+  deps.routes.override(path, definition);
+}
+```
+
+In use:
+
+```tsx
+overrideIfPresent(deps, '/users/:id', {
+  element: <ClientAUserDetail />,
+  meta: { group: 'user', module: 'user-management' },
+});
+```
+
+The guard is **required** for routes of modules that can be disabled (`CONTRACT §12.4`). Without it, disabling a module via `config.modules` makes boot fail with `[routes] cannot override unknown route`. Init order helps: an extension always inits **after** all modules, so `routes.has` is already final. An extension may also add a new route with `deps.routes.add` — include `meta.module`.
+
+### Step 3 — Level 3: service wrapper
+
+An extension **must not** override core services (`auth`, `user`, `order`). The correct pattern: register a new service namespaced as `<client>.<service>` (`src/index.tsx:56-60`):
+
+```tsx
+const auditClient = axios.create({ baseURL: '/api/audit-client-a', timeout: 5000 });
+deps.apiRegistry.register('client-a.audit', auditClient);
+```
+
+When you need to change a module service's logic, wrap its factory in an extension hook — never touch the instance the module registered:
+
+```ts
+const service = useMemo(() => {
+  const base = createSampleService(apiRegistry.get('module-sample'));
+  return {
+    ...base,
+    async getUser(userId: number) {
+      if (userId > 3) throw new Error('client-a: hanya user 1-3 yang boleh diakses');
+      return base.getUser(userId);
+    },
+  };
+}, [apiRegistry]);
+```
+
+Living example: `web-extension-client-a/src/hooks/useClientASample.ts`. Full rules: `CONTRACT §4`.
+
+### Step 4 — i18n and events
+
+Two adjustments almost every extension needs:
+
+```tsx
+// the client's own namespace
+deps.i18n.addResourceBundle('en', 'client-a', en, true, true);
+
+// override a module label (deep merge + overwrite)
+deps.i18n.addResourceBundle('en', 'user-management', { title: 'Client A Users' }, true, true);
+
+// listen to a module event (the allowed direction)
+deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
+  void deps.queryClient.invalidateQueries({ queryKey: userKeys.detail(payload.id) });
+});
+```
+
+Both come from `src/index.tsx`: i18n at `:38-54`, event listener at `:78-81`.
+
+Allowed event directions (`CONTRACT §13`):
+
+| Direction | Allowed? |
+| --- | --- |
+| Module emit → extension listen | ✓ |
+| Extension emit → module listen | ✗ (the base must not know about the extension) |
+| Extension emit → extension/container listen | ✓ (namespace `<client>.<entity>.<action>`) |
+
+### Step 5 — Extension tests
+
+Tests for the override are **required**. The pattern in `web-extension-client-a/src/__tests__/init.test.ts`: `createFakeDeps()` + `vi.resetModules()` + dynamic import, then assert the registry calls:
+
+```ts
+expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.anything());
+expect(routes.override).toHaveBeenCalledWith(
+  '/users/:id',
+  expect.objectContaining({ element: expect.anything() }),
+);
+```
+
+Verify:
+
+```bash
+cd web-extension-client-a
+npm run typecheck && npm test && npm run lint
+```
+
+The first time an extension imports a module, add the `@arsi/module-<folder>` alias in the extension's `aliases.cjs` + `tsconfig.json` (see `web-extension-client-a/aliases.cjs`).
+
+### Step 6 — See the override in dev
+
+```bash
+cd web-container
+CLIENT=client-a npm run link:client   # symlink current-client -> ../web-extension-client-a
+npm run dev                          # http://localhost:5173
+readlink current-client              # make sure it points at the right extension
+```
+
+Changes under the extension's `src/` hot-reload; **restart** the dev server when switching clients.
+
+✅ **Chapter 4 checkpoint**
+
+- [ ] The extension's slot/panel appears on the module page without a single module file changing.
+- [ ] The route override is visible; with the target module disabled, boot still works and the guard logs a warning.
+- [ ] `npm run typecheck && npm test && npm run lint` passes in the extension repo.
+- [ ] No core service is overridden; new services are namespaced `client-<x>.<service>`.
+
+⚠️ **Chapter 4 common pitfalls**
+
+- **Overriding an optional module's route without a guard** → boot fails with `[routes] cannot override unknown route` (`CONTRACT §12.4`).
+- **Importing a module's internal files** (`pages/...`, `store/...`) instead of `@arsi/module-<folder>` (`public.ts`) — a contract violation.
+- **Registering a service under a core name** (`user`, `auth`) — guaranteed collision; always use the client namespace.
+- **Forgetting `meta` on an override** — module attribution is lost because the override replaces the whole entry.
+- **Touching module code for a client need.** Client needs are solved in the extension; module changes go to the base repo as their own PR.
+- **Forgetting to add the module alias** on first override — the extension's typecheck/test fails to resolve.
+
+📖 **Concept:** the three override levels, additive vs invasive, and the optional-module guard → `ARCHITECTURE §7`.
+
+### Creating a new client repo from the template
+
+Used when the folder/repo `web-extension-client-<x>` does not exist yet. Run these from the base repo.
+
+1. Create an empty `arsi-web-client-<x>` repo in the GitHub org (e.g. `satriolangit`).
+
+2. Copy the template — the client folder must be a sibling of `web-container`/`web-modules`:
+
+```bash
+cd arsi-web-base
+cp -R web-extension-template web-extension-client-<x>
+rm -rf web-extension-client-<x>/node_modules
+```
+
+3. Adjust the client identity:
+   - `package.json`: `name` → `@arsi/extension-client-<x>`.
+   - `manifest.json`: `client` → `client-<x>` (e.g. `client-bca`), `baseVersion` → the current base tag (exact, no `^`), then `modules`/`shared`/`overrides` as needed. A wrong pin is rejected by `npm run check:base` during the image build.
+
+4. Make it its own Git repo, then push:
+
+```bash
+cd web-extension-client-<x>
+git init -b main
+git add .
+git commit -m "feat: initial extension client-<x>"
+git remote add origin <git-url-arsi-web-client-<x>>
+git push -u origin main
+```
+
+5. Make sure the client folder does not leak into the base repo:
+   - The base repo's `.git/info/exclude` contains `web-extension-*/` (created in `GUIDE §0`).
+   - Verify: `cd ..` then `git status` must be **clean**, and `git check-ignore -v web-extension-client-<x>/` must point at `.git/info/exclude`.
+   - The ignore only applies to **untracked** files; if it was already `git add`ed, remove it with `git rm -r --cached web-extension-client-<x>`. Never use `git add -f`.
+   - `web-extension-default/` and `web-extension-template/` are intentionally kept tracked in the base repo.
+
+6. Try it locally (optional):
+
+```bash
+cd web-extension-client-<x>
+npm ci
+cd ../web-container
+CLIENT=client-<x> npm run link:client && npm run dev
+```
+
+Building & pushing the client image uses `ci/build-client.sh` (the base is not rebuilt); the full steps are in `DEPLOYMENT-GUIDE.en.md` §3–§5.
