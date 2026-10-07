@@ -530,7 +530,7 @@ server {
     listen 80;
     server_name app.example.com;
 
-    # Security headers (HSTS is added by certbot only after TLS works)
+    # Security headers (certbot does NOT add HSTS; add it manually after TLS works)
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
