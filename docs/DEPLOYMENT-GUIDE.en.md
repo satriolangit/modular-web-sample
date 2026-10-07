@@ -818,3 +818,272 @@ sudo systemctl status arsi-<client>
 - [ ] No secrets in `VITE_*`.
 
 To automate build & deploy, continue to Tutorial C (Azure CI/CD).
+
+---
+
+## Tutorial C — Deploy via Azure CI/CD
+
+Tutorial C connects two Azure DevOps pipelines to the VM from DEPLOYMENT-GUIDE Tutorial B. The base pipeline builds base images; the client pipeline builds the client image and deploys it over SSH. The deployed artifact is the same image as in Tutorials A/B — the pipelines only replace the manual steps (`docker build`, `docker push`, `sed .env`, `docker compose up -d`).
+
+Prerequisite: the VM has completed Tutorial B (layout `/opt/arsi-web/client-a`, `compose.yaml`, `.env`) because the deploy stage relies on all three. Image and tag concepts are in ARCHITECTURE §8 and `CONTRACT`. All YAML files are already in the repo; this tutorial explains their contents and the Azure DevOps setup.
+
+```mermaid
+flowchart LR
+    A[Push to main] --> B[Base pipeline: VERIFY + build + push base images]
+    A --> C[Client pipeline: pull base + build + push client image]
+    C --> D[Deploy stage: SSH to the VM]
+    D --> E[docker compose pull + up -d]
+    E --> F[Smoke: /config.json]
+```
+
+A push to `main` triggers each repo's pipeline. The client pipeline always pulls the base pinned in `manifest.json:baseVersion`, so it does not wait for the base pipeline — just make sure that base version exists on Docker Hub (C.8).
+
+| Pipeline | Repo | YAML file | Output |
+| --- | --- | --- | --- |
+| Base | base repo | `azure-pipelines.yml` (root) | base image `<version>` + `<sha>` |
+| Client | client repo | `azure-pipelines.yml` (root; in this workspace `web-extension-client-a/azure-pipelines.yml`) | client image `<buildId>` + VM deploy |
+
+### C.1 Azure DevOps prerequisites
+
+| Requirement | Detail |
+| --- | --- |
+| Organization + project | Azure DevOps Services; one project, e.g. `arsi-web` |
+| Repos | base repo and client repo connected (Azure Repos Git, or GitHub) |
+| Agent | **Microsoft-hosted** pool, `ubuntu-latest`; the runner already provides Docker, no self-hosted agent needed |
+| Docker Hub | account + namespace/org; read/write access token for pushes |
+| VM from Tutorial B | hostname (e.g. `app.example.com`), port 22 reachable from the runner, user `deploy` |
+| Permissions | project admin role to create service connections and environments |
+
+Steps:
+
+1. Create the project and invite the team responsible for approvals.
+2. Make sure both repos show up in **Repos → Files** and their default branch is `main`.
+3. Make sure the Docker Hub namespace used later matches `dockerHubOrg` (C.2).
+
+### C.2 Service connections & variable groups
+
+Pipelines store no credentials; the YAML only references the *names* of service connections and variable groups.
+
+**Docker Hub service connection** — Project settings → Service connections → New service connection → Docker Registry → Docker Hub:
+
+- Name: `arsi-dockerhub-client-a` (base: `arsi-dockerhub-base`).
+- Username: Docker Hub account; Password: read/write access token (Docker Hub → Account settings → Personal access tokens).
+- This name is what the YAML uses as `dockerHubConnection`.
+
+**SSH service connection** — New service connection → SSH:
+
+- Name: `arsi-vm-client-a`.
+- Host `app.example.com`, port `22`, username `deploy`, private key owned by user `deploy` (Tutorial B B.2) — paste the private key into the form, never into the repo.
+- This name is what the YAML uses as `vmSshConnection`.
+
+**Variable group** — Pipelines → Library → + Variable group. Create two:
+
+Group `arsi-web-base`:
+
+| Variable | Example value | Contents |
+| --- | --- | --- |
+| `dockerHubOrg` | `my-company` | Docker Hub namespace/org |
+| `dockerHubConnection` | `arsi-dockerhub-base` | Docker service connection name |
+
+Group `arsi-web-client-a`:
+
+| Variable | Example value | Contents |
+| --- | --- | --- |
+| `dockerHubOrg` | `my-company` | Docker Hub namespace/org |
+| `dockerHubConnection` | `arsi-dockerhub-client-a` | Docker service connection name |
+| `vmSshConnection` | `arsi-vm-client-a` | SSH service connection name |
+| `vmDeployPath` | `/opt/arsi-web/client-a` | Compose project directory on the VM (Tutorial B B.5) |
+
+- The group name must match `- group:` in the YAML exactly; variable names must match `$(...)` in the YAML.
+- Tokens/passwords are not written in YAML — they live in the service connections. If a sensitive value must be in a variable group, mark the lock icon (secret).
+- After creating the pipeline, authorize the group: Library → group → Pipeline permissions (or project).
+
+### C.3 Base pipeline
+
+The `azure-pipelines.yml` file lives at the base repo root (in this workspace: project root).
+
+Create the pipeline: **Pipelines → New pipeline → Azure Repos Git (base repo) → Existing Azure Pipelines YAML file → `/azure-pipelines.yml` → Run**.
+
+The base repo `azure-pipelines.yml` (identical to the file shipped in the repo):
+
+```yaml
+# Azure Pipelines — base repo (arsi-web-base)
+# Build & push base images (builder + runtime) ke Docker Hub.
+# Deploy tidak di sini: image base dipakai client image (lihat DEPLOYMENT-GUIDE Tutorial C).
+
+trigger:
+  branches:
+    include:
+      - main
+  tags:
+    include:
+      - 'v*'
+
+pr: none
+
+variables:
+  - group: arsi-web-base          # dockerHubOrg, dockerHubConnection
+  - name: REGISTRY
+    value: docker.io
+
+stages:
+  - stage: BuildPush
+    displayName: Build & push base images
+    jobs:
+      - job: base
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: Node 22 (VERIFY=1)
+            inputs:
+              versionSpec: '22.x'
+          - task: Docker@2
+            displayName: Login Docker Hub
+            inputs:
+              command: login
+              containerRegistry: $(dockerHubConnection)
+          - script: ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh
+            displayName: Build & push base (VERIFY=1 PUSH=1)
+          - script: |
+              BASE_VERSION="$(node -p "require('./web-container/package.json').version")"
+              docker run -d --rm -p 8080:80 --name base-smoke "$(REGISTRY)/$(dockerHubOrg)/arsi-web-base:${BASE_VERSION}"
+              sleep 3
+              curl -sf http://localhost:8080/config.json | grep -q '"client"'
+              docker rm -f base-smoke
+            displayName: Smoke test base image
+```
+
+What each part does:
+
+- `trigger`: pushes to `main` and tags `v*`; `pr: none` means PRs do not trigger a build — artifacts are produced on merge/tag.
+- `variables`: variable group `arsi-web-base` + `REGISTRY=docker.io`.
+- Stage `BuildPush`, job `base` on `ubuntu-latest`:
+  1. `checkout: self` — fetch the repo source.
+  2. `NodeTool@0` version `22.x` — required by `VERIFY=1` (typecheck/test/lint + `check:base`).
+  3. `Docker@2` `command: login` with `containerRegistry: $(dockerHubConnection)`.
+  4. `ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh` — builds the builder + runtime targets, then pushes two kinds of tags for each image: `<version>-builder`/`<sha>-builder` and `<version>`/`<sha>` (four tags in total). `<version>` comes from `web-container/package.json`; `<sha>` is the commit.
+  5. Runner smoke test: run the `<version>` runtime image on port 8080, wait 3 seconds, `curl /config.json` must contain `"client"`, then remove the container.
+
+Base release: merge to `main` then create git tag `v0.1.0` → image `<version>` + `<sha>` available. Commits without a tag still produce a `<sha>` image.
+
+### C.4 Client pipeline
+
+The `azure-pipelines.yml` file lives at the client repo root (in this workspace: `web-extension-client-a/azure-pipelines.yml`). Other clients copy `web-extension-template/azure-pipelines.yml` and replace the `<x>`/`<client>` placeholders.
+
+Create the pipeline: same as C.3, pointing at the client repo YAML.
+
+- Variable `BUILD_ID: $(Build.SourceVersion)` — full commit SHA; used as the image tag **and** as the `BUILD_ID` value in the VM `.env`, so every deployment is traceable to a commit.
+- Stage `BuildPush`:
+  1. `checkout: self`; `Docker@2` login.
+  2. `ORG="$(dockerHubOrg)" PUSH=1 BUILD_ID="$(BUILD_ID)" ./ci/build-client.sh` — pulls the base builder + runtime at the `manifest.json:baseVersion` tag, runs `check:base`, builds, then pushes a single tag `docker.io/<org>/arsi-web-client-a:<full-sha>`.
+- Stage `Deploy`: `dependsOn: BuildPush` + `condition: succeeded()`; the `deployment` job targets environment `arsi-web-client-a-production` (C.5) and runs SSH to the VM (C.6).
+- Tag = commit, so re-running the pipeline for the same commit pushes the same tag (identical contents) — safe to repeat.
+- If `check:base` fails, the build stops with `[check:base] baseVersion manifest (x) != base image (y)` — fix `manifest.json` or release a new base (C.8).
+
+### C.5 Environment + approval
+
+Approvals are not written in YAML; they are configured on the Azure DevOps *environment*.
+
+1. **Pipelines → Environments → New environment** → name `arsi-web-client-a-production` (must match `environment:` in the YAML exactly).
+2. Open the environment → **Approvals and checks → Approvals** → add an approver (e.g. release manager).
+3. Recommended: add **Branch control** (`main` only) so deployments cannot be triggered from other branches.
+4. When a run reaches the `Deploy` stage, it pauses at *Waiting for approval*. Once the approver approves, the SSH task runs; the decision and timestamp are recorded in the environment/run history.
+5. Approval timeout defaults to 30 days and is configurable; approvals left hanging too long are automatically rejected.
+
+If the environment does not exist, Azure DevOps creates it automatically on the first run — but without approvers. Create it up front so approval can be configured.
+
+### C.6 Deploy stage
+
+The `deployment` job (`runOnce` strategy) runs a single `SSH@0` task on the VM:
+
+```yaml
+sshEndpoint: $(vmSshConnection)
+runOptions: inline
+inline: |
+  set -e
+  cd "$(vmDeployPath)"
+  sed -i "s|^BUILD_ID=.*|BUILD_ID=$(BUILD_ID)|" .env
+  docker compose pull
+  docker compose up -d
+  curl -sf http://localhost:8080/config.json | grep -q '"client"'
+```
+
+Line by line:
+
+- `set -e` — stop on the first error; the step is marked failed.
+- `cd "$(vmDeployPath)"` — the Compose project directory (Tutorial B B.5).
+- `sed` replaces the `BUILD_ID` line in `.env`; `compose.yaml` uses image `...:${BUILD_ID}` (Tutorial B B.6).
+- `docker compose pull` + `up -d` — fetch the new tag then recreate the container; expect a brief blip (Tutorial B B.10).
+- `curl` smoke on the VM — the container binds to `127.0.0.1:8080`, so `localhost` over SSH works; a failure here fails the deployment.
+
+Prerequisites that must already be correct:
+
+- `.env` + `compose.yaml` exist in `vmDeployPath` (manual first deploy: Tutorial B B.7).
+- The SSH user (`deploy`) may run Docker and has `docker login` read-only if the image is private (Tutorial B B.3–B.4).
+- The Microsoft-hosted runner can reach port 22 on the VM; credentials live in the SSH service connection, not the YAML.
+- Compose plugin v2 (`docker compose`, not `docker-compose`).
+
+On failure: check the SSH task log. A failed pull → the old container keeps running; a failed smoke after `up -d` → the container is already on the new tag and must be rolled back (C.7).
+
+### C.7 Rollback
+
+Fastest path on the VM (same as Tutorial B B.10):
+
+```bash
+ssh deploy@app.example.com
+cd /opt/arsi-web/client-a
+sed -i 's/^BUILD_ID=.*/BUILD_ID=<previous-build-id>/' .env
+docker compose pull
+docker compose up -d
+curl -sf http://localhost:8080/config.json | grep -q '"client"'
+```
+
+Via the pipeline (recorded in run history + approval): tag the release commit with a git tag (e.g. `release-2026-10-10`) and run the pipeline on that ref — **Run pipeline → Branch/tag → `release-2026-10-10`**. `BUILD_ID=$(Build.SourceVersion)` automatically becomes the old tag; `BuildPush` rebuilds from identical source and re-pushes the same tag; `Deploy` pulls it after approval.
+
+⚠️ Do not override the `BUILD_ID` queue-time variable while `BuildPush` checks out `main`: the old tag would be overwritten with an image from newer source. If you only want to change the tag without rebuilding, use the VM steps above.
+
+- Record the known-good tag for every release (run history / release notes).
+- Rollback always points at the original immutable tag; never retag old versions (Tutorial B B.10).
+- After rollback, fix `main`; the fix commit produces a new BUILD_ID and deploys normally.
+
+### C.8 Adopting a new base
+
+1. Base release: merge + tag `v<version>` in the base repo (C.3) → base image `<version>` on Docker Hub.
+2. In the client repo, open a PR that bumps `manifest.json:baseVersion` to the new `<version>`.
+3. Merge the PR to `main` → the client pipeline runs: `check:base` verifies the new builder image, then builds + pushes the new `BUILD_ID`.
+4. Approve in the environment → deploy.
+
+Example PR diff in the client repo:
+
+```diff
+ {
+   "client": "client-a",
+-  "baseVersion": "0.1.0",
++  "baseVersion": "0.2.0",
+   "modules": {
+     "user-management": "^0.1.0",
+     "product-management": "^0.1.0",
+     "module-sample": "^0.1.0"
+   },
+   "shared": "^0.1.0",
+   "overrides": ["user-management", "module-sample"]
+ }
+```
+
+Notes:
+
+- Other clients are unaffected until each one bumps its own `baseVersion` (see DEPLOYMENT-GUIDE Tutorial B and §1.2).
+- Ordering: release the base first, confirm its tag can be pulled, then merge the client PR.
+- Rollback of the adoption: revert the `baseVersion` PR (rebuild) or deploy the previous `BUILD_ID` (C.7).
+
+### ✅ Tutorial C checklist
+
+- [ ] Base pipeline green on `main`/tag push; image `<version>` + `<sha>` on Docker Hub.
+- [ ] Client pipeline green; image `arsi-web-client-a:<sha>` on Docker Hub.
+- [ ] Environment `arsi-web-client-a-production` has an approver; approval recorded in run history.
+- [ ] SSH deploy succeeds; after approval, `/config.json` on the VM is correct.
+- [ ] VM `.env` contains the `BUILD_ID` of the deployed commit.
+- [ ] Rollback has been exercised at least once (VM steps or a run from the old release tag).
+- [ ] No tokens/passwords in YAML or non-secret variables.

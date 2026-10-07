@@ -818,3 +818,272 @@ sudo systemctl status arsi-<client>
 - [ ] Tidak ada secret di `VITE_*`.
 
 Untuk otomatisasi build & deploy, lanjut ke Tutorial C (Azure CI/CD).
+
+---
+
+## Tutorial C — Deploy via Azure CI/CD
+
+Tutorial C menyambungkan dua pipeline Azure DevOps ke VM dari DEPLOYMENT-GUIDE Tutorial B. Pipeline base membangun image base; pipeline client membangun image client lalu men-deploy-nya lewat SSH. Artefak yang di-deploy tetap image yang sama seperti Tutorial A/B — pipeline hanya menggantikan langkah manual (`docker build`, `docker push`, `sed .env`, `docker compose up -d`).
+
+Prasyarat: VM sudah melewati Tutorial B (layout `/opt/arsi-web/client-a`, `compose.yaml`, `.env`) karena deploy stage mengandalkan ketiganya. Konsep image dan tag ada di ARCHITECTURE §8 dan `CONTRACT`. Semua file YAML sudah tersedia di repo; tutorial ini menjelaskan isinya dan setup Azure DevOps-nya.
+
+```mermaid
+flowchart LR
+    A[Push ke main] --> B[Pipeline base: VERIFY + build + push base images]
+    A --> C[Pipeline client: pull base + build + push client image]
+    C --> D[Deploy stage: SSH ke VM]
+    D --> E[docker compose pull + up -d]
+    E --> F[Smoke: /config.json]
+```
+
+Push ke `main` memicu pipeline repo masing-masing. Pipeline client selalu menarik base yang di-pin `manifest.json:baseVersion`, jadi ia tidak menunggu pipeline base selesai — cukup pastikan versi base itu sudah ada di Docker Hub (C.8).
+
+| Pipeline | Repo | File YAML | Hasil |
+| --- | --- | --- | --- |
+| Base | repo base | `azure-pipelines.yml` (root) | image base `<versi>` + `<sha>` |
+| Client | repo klien | `azure-pipelines.yml` (root; di workspace ini `web-extension-client-a/azure-pipelines.yml`) | image client `<buildId>` + deploy ke VM |
+
+### C.1 Prasyarat Azure DevOps
+
+| Kebutuhan | Detail |
+| --- | --- |
+| Organisasi + project | Azure DevOps Services; satu project, mis. `arsi-web` |
+| Repo | repo base dan repo klien terhubung (Azure Repos Git, atau GitHub) |
+| Agent | pool **Microsoft-hosted** `ubuntu-latest`; runner sudah menyediakan Docker, tidak perlu self-hosted |
+| Docker Hub | akun + namespace/org; access token read/write untuk push |
+| VM Tutorial B | hostname (mis. `app.example.com`), port 22 terjangkau runner, user `deploy` |
+| Hak akses | role admin project untuk membuat service connection dan environment |
+
+Langkah:
+
+1. Buat project dan undang tim yang bertanggung jawab approval.
+2. Pastikan kedua repo tampil di **Repos → Files** dan default branch-nya `main`.
+3. Pastikan namespace Docker Hub yang dipakai nanti sama dengan nilai `dockerHubOrg` (C.2).
+
+### C.2 Service connection & variable group
+
+Pipeline tidak menyimpan kredensial; YAML hanya mereferensikan *nama* service connection dan variable group.
+
+**Docker Hub service connection** — Project settings → Service connections → New service connection → Docker Registry → Docker Hub:
+
+- Name: `arsi-dockerhub-client-a` (base: `arsi-dockerhub-base`).
+- Username: akun Docker Hub; Password: access token read/write (Docker Hub → Account settings → Personal access tokens).
+- Name ini yang dipakai YAML sebagai `dockerHubConnection`.
+
+**SSH service connection** — New service connection → SSH:
+
+- Name: `arsi-vm-client-a`.
+- Host `app.example.com`, port `22`, username `deploy`, private key milik user `deploy` (Tutorial B B.2) — tempel isi private key di form, jangan di repo.
+- Name ini yang dipakai YAML sebagai `vmSshConnection`.
+
+**Variable group** — Pipelines → Library → + Variable group. Buat dua:
+
+Grup `arsi-web-base`:
+
+| Variable | Contoh nilai | Isi |
+| --- | --- | --- |
+| `dockerHubOrg` | `my-company` | namespace/org Docker Hub |
+| `dockerHubConnection` | `arsi-dockerhub-base` | name Docker service connection |
+
+Grup `arsi-web-client-a`:
+
+| Variable | Contoh nilai | Isi |
+| --- | --- | --- |
+| `dockerHubOrg` | `my-company` | namespace/org Docker Hub |
+| `dockerHubConnection` | `arsi-dockerhub-client-a` | name Docker service connection |
+| `vmSshConnection` | `arsi-vm-client-a` | name SSH service connection |
+| `vmDeployPath` | `/opt/arsi-web/client-a` | direktori project Compose di VM (Tutorial B B.5) |
+
+- Nama group harus sama persis dengan `- group:` di YAML; nama variable sama dengan `$(...)` di YAML.
+- Token/password tidak ditulis di YAML — cukup disimpan di service connection. Bila ada nilai sensitif yang harus ada di variable group, tandai ikon gembok (secret).
+- Setelah pipeline dibuat, authorize group-nya: Library → group → Pipeline permissions (atau project).
+
+### C.3 Pipeline base
+
+File `azure-pipelines.yml` ada di root repo base (di workspace ini: root project).
+
+Membuat pipeline: **Pipelines → New pipeline → Azure Repos Git (repo base) → Existing Azure Pipelines YAML file → `/azure-pipelines.yml` → Run**.
+
+Isi `azure-pipelines.yml` pada repo base (identik dengan file yang disertakan di repo):
+
+```yaml
+# Azure Pipelines — base repo (arsi-web-base)
+# Build & push base images (builder + runtime) ke Docker Hub.
+# Deploy tidak di sini: image base dipakai client image (lihat DEPLOYMENT-GUIDE Tutorial C).
+
+trigger:
+  branches:
+    include:
+      - main
+  tags:
+    include:
+      - 'v*'
+
+pr: none
+
+variables:
+  - group: arsi-web-base          # dockerHubOrg, dockerHubConnection
+  - name: REGISTRY
+    value: docker.io
+
+stages:
+  - stage: BuildPush
+    displayName: Build & push base images
+    jobs:
+      - job: base
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: Node 22 (VERIFY=1)
+            inputs:
+              versionSpec: '22.x'
+          - task: Docker@2
+            displayName: Login Docker Hub
+            inputs:
+              command: login
+              containerRegistry: $(dockerHubConnection)
+          - script: ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh
+            displayName: Build & push base (VERIFY=1 PUSH=1)
+          - script: |
+              BASE_VERSION="$(node -p "require('./web-container/package.json').version")"
+              docker run -d --rm -p 8080:80 --name base-smoke "$(REGISTRY)/$(dockerHubOrg)/arsi-web-base:${BASE_VERSION}"
+              sleep 3
+              curl -sf http://localhost:8080/config.json | grep -q '"client"'
+              docker rm -f base-smoke
+            displayName: Smoke test base image
+```
+
+Penjelasan tiap bagian:
+
+- `trigger`: push ke `main` dan tag `v*`; `pr: none` berarti PR tidak memicu build — artefak dibuat saat merge/tag.
+- `variables`: variable group `arsi-web-base` + `REGISTRY=docker.io`.
+- Stage `BuildPush`, job `base` di `ubuntu-latest`:
+  1. `checkout: self` — ambil source repo.
+  2. `NodeTool@0` versi `22.x` — dibutuhkan `VERIFY=1` (typecheck/test/lint + `check:base`).
+  3. `Docker@2` `command: login` dengan `containerRegistry: $(dockerHubConnection)`.
+  4. `ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh` — build target builder + runtime, lalu push dua jenis tag untuk tiap image: `<versi>-builder`/`<sha>-builder` dan `<versi>`/`<sha>` (total empat tag). `<versi>` dibaca dari `web-container/package.json`; `<sha>` = commit.
+  5. Smoke test di runner: jalankan image runtime `<versi>` di port 8080, tunggu 3 detik, `curl /config.json` harus memuat `"client"`, lalu container dihapus.
+
+Rilis base: merge ke `main` lalu buat tag git `v0.1.0` → image `<versi>` + `<sha>` tersedia. Commit tanpa tag tetap menghasilkan image `<sha>`.
+
+### C.4 Pipeline client
+
+File `azure-pipelines.yml` ada di root repo klien (di workspace ini: `web-extension-client-a/azure-pipelines.yml`). Klien lain menyalin `web-extension-template/azure-pipelines.yml` lalu mengganti placeholder `<x>`/`<client>`.
+
+Membuat pipeline: sama seperti C.3, arahkan ke YAML repo klien.
+
+- Variable `BUILD_ID: $(Build.SourceVersion)` — full commit SHA; dipakai sebagai tag image **dan** nilai `BUILD_ID` di `.env` VM, sehingga deploy selalu bisa dilacak ke commit.
+- Stage `BuildPush`:
+  1. `checkout: self`; `Docker@2` login.
+  2. `ORG="$(dockerHubOrg)" PUSH=1 BUILD_ID="$(BUILD_ID)" ./ci/build-client.sh` — pull base builder + runtime pada tag `manifest.json:baseVersion`, verifikasi `check:base`, build, lalu push satu tag `docker.io/<org>/arsi-web-client-a:<full-sha>`.
+- Stage `Deploy`: `dependsOn: BuildPush` + `condition: succeeded()`; job `deployment` ke environment `arsi-web-client-a-production` (C.5) yang menjalankan SSH ke VM (C.6).
+- Tag = commit, jadi menjalankan ulang pipeline untuk commit yang sama mempush tag yang sama (isi identik) — aman diulang.
+- Bila `check:base` gagal, build berhenti dengan `[check:base] baseVersion manifest (x) != base image (y)` — perbaiki `manifest.json` atau rilis base baru (C.8).
+
+### C.5 Environment + approval
+
+Approval tidak ditulis di YAML; ia dipasang pada *environment* Azure DevOps.
+
+1. **Pipelines → Environments → New environment** → nama `arsi-web-client-a-production` (harus sama persis dengan `environment:` di YAML).
+2. Buka environment → **Approvals and checks → Approvals** → tambahkan approver (mis. release manager).
+3. Disarankan: tambahkan **Branch control** (hanya `main`) agar deploy tidak bisa dipicu dari branch lain.
+4. Saat run mencapai stage `Deploy`, status berhenti di *Waiting for approval*. Setelah approver menyetujui, task SSH berjalan; keputusan dan waktunya tercatat di riwayat environment/run.
+5. Timeout approval default 30 hari dan bisa diubah; approval yang menggantung terlalu lama ditolak otomatis.
+
+Bila environment belum ada, Azure DevOps membuatnya otomatis saat run pertama — tetapi tanpa approver. Buat lebih dulu agar approval bisa dipasang.
+
+### C.6 Deploy stage
+
+Job `deployment` (strategi `runOnce`) menjalankan satu task `SSH@0` di VM:
+
+```yaml
+sshEndpoint: $(vmSshConnection)
+runOptions: inline
+inline: |
+  set -e
+  cd "$(vmDeployPath)"
+  sed -i "s|^BUILD_ID=.*|BUILD_ID=$(BUILD_ID)|" .env
+  docker compose pull
+  docker compose up -d
+  curl -sf http://localhost:8080/config.json | grep -q '"client"'
+```
+
+Baris demi baris:
+
+- `set -e` — berhenti pada error pertama; step ditandai gagal.
+- `cd "$(vmDeployPath)"` — direktori project Compose (Tutorial B B.5).
+- `sed` mengganti baris `BUILD_ID` di `.env`; `compose.yaml` memakai image `...:${BUILD_ID}` (Tutorial B B.6).
+- `docker compose pull` + `up -d` — ambil tag baru lalu recreate container; ada blip beberapa detik (Tutorial B B.10).
+- `curl` smoke di VM — container bind ke `127.0.0.1:8080`, jadi `localhost` dari SSH cocok; kegagalan di sini menggagalkan deploy.
+
+Syarat yang harus sudah benar:
+
+- `.env` + `compose.yaml` ada di `vmDeployPath` (first deploy manual: Tutorial B B.7).
+- User SSH (`deploy`) boleh menjalankan Docker dan sudah `docker login` read-only bila image private (Tutorial B B.3–B.4).
+- Runner Microsoft-hosted bisa menjangkau port 22 VM; kredensial ada di SSH service connection, bukan YAML.
+- Compose plugin v2 (`docker compose`, bukan `docker-compose`).
+
+Bila gagal: lihat log task SSH. Pull gagal → container lama tetap berjalan; smoke gagal setelah `up -d` → container sudah memakai tag baru dan perlu di-rollback (C.7).
+
+### C.7 Rollback
+
+Cara tercepat di VM (sama seperti Tutorial B B.10):
+
+```bash
+ssh deploy@app.example.com
+cd /opt/arsi-web/client-a
+sed -i 's/^BUILD_ID=.*/BUILD_ID=<buildId-lama>/' .env
+docker compose pull
+docker compose up -d
+curl -sf http://localhost:8080/config.json | grep -q '"client"'
+```
+
+Lewat pipeline (tercatat di riwayat + approval): tandai commit rilis dengan tag git (mis. `release-2026.10.10`) dan jalankan pipeline pada ref itu — **Run pipeline → Branch/tag → `release-2026.10.10`**. `BUILD_ID=$(Build.SourceVersion)` otomatis menjadi tag lama; `BuildPush` membangun ulang dari source identik lalu mempush tag yang sama; `Deploy` menariknya setelah approval.
+
+⚠️ Jangan menimpa variable `BUILD_ID` di antrean sambil `BuildPush` checkout `main`: tag lama akan tertimpa image dari source terbaru. Bila hanya ingin mengganti tag tanpa rebuild, pakai langkah VM di atas.
+
+- Catat tag known-good setiap rilis (riwayat run / catatan rilis).
+- Rollback selalu menunjuk tag immutable aslinya; jangan retag versi lama (Tutorial B B.10).
+- Setelah rollback, perbaiki di `main`; commit perbaikan menghasilkan BUILD_ID baru dan deploy normal.
+
+### C.8 Adopsi base baru
+
+1. Rilis base: merge + tag `v<versi>` di repo base (C.3) → image base `<versi>` di Docker Hub.
+2. Di repo klien, buat PR yang menaikkan `manifest.json:baseVersion` ke `<versi>` baru.
+3. Merge PR ke `main` → pipeline client berjalan: `check:base` memverifikasi builder image baru, lalu build + push `BUILD_ID` baru.
+4. Setujui di environment → deploy.
+
+Contoh diff PR di repo klien:
+
+```diff
+ {
+   "client": "client-a",
+-  "baseVersion": "0.1.0",
++  "baseVersion": "0.2.0",
+   "modules": {
+     "user-management": "^0.1.0",
+     "product-management": "^0.1.0",
+     "module-sample": "^0.1.0"
+   },
+   "shared": "^0.1.0",
+   "overrides": ["user-management", "module-sample"]
+ }
+```
+
+Catatan:
+
+- Klien lain tidak terpengaruh sampai masing-masing menaikkan `baseVersion` (lihat DEPLOYMENT-GUIDE Tutorial B dan §1.2).
+- Urutkan: rilis base dulu, pastikan tag-nya bisa di-pull, baru merge PR klien.
+- Rollback adopsi: revert PR `baseVersion` (build ulang) atau deploy `BUILD_ID` sebelumnya (C.7).
+
+### ✅ Checklist Tutorial C
+
+- [ ] Pipeline base hijau pada push `main`/tag; image `<versi>` + `<sha>` ada di Docker Hub.
+- [ ] Pipeline client hijau; image `arsi-web-client-a:<sha>` ada di Docker Hub.
+- [ ] Environment `arsi-web-client-a-production` punya approver; approval tercatat di riwayat run.
+- [ ] Deploy SSH sukses; setelah approval, `/config.json` di VM benar.
+- [ ] `.env` VM berisi `BUILD_ID` commit yang di-deploy.
+- [ ] Rollback pernah diuji (langkah VM atau run dari tag rilis lama).
+- [ ] Tidak ada token/password di YAML maupun variable non-secret.

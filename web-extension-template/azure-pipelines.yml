@@ -1,0 +1,59 @@
+# Azure Pipelines — client extension repo (arsi-web-client-<x>)
+# Build & push client image; deploy ke VM via SSH (docker compose pull/up).
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+variables:
+  - group: arsi-web-client-<x>    # dockerHubOrg, dockerHubConnection, vmSshConnection, vmDeployPath
+  - name: REGISTRY
+    value: docker.io
+  - name: BUILD_ID
+    value: $(Build.SourceVersion)
+
+stages:
+  - stage: BuildPush
+    displayName: Build & push client image
+    jobs:
+      - job: client
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - task: Docker@2
+            displayName: Login Docker Hub
+            inputs:
+              command: login
+              containerRegistry: $(dockerHubConnection)
+          - script: ORG="$(dockerHubOrg)" PUSH=1 BUILD_ID="$(BUILD_ID)" ./ci/build-client.sh
+            displayName: Build & push client (PUSH=1)
+
+  - stage: Deploy
+    displayName: Deploy ke VM
+    dependsOn: BuildPush
+    condition: succeeded()
+    jobs:
+      - deployment: vm
+        environment: arsi-web-<client>-production   # approval diatur di environment
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: SSH@0
+                  displayName: Pull & restart di VM
+                  inputs:
+                    sshEndpoint: $(vmSshConnection)
+                    runOptions: inline
+                    inline: |
+                      set -e
+                      cd "$(vmDeployPath)"
+                      sed -i "s|^BUILD_ID=.*|BUILD_ID=$(BUILD_ID)|" .env
+                      docker compose pull
+                      docker compose up -d
+                      curl -sf http://localhost:8080/config.json | grep -q '"client"'

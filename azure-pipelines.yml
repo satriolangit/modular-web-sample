@@ -1,0 +1,46 @@
+# Azure Pipelines — base repo (arsi-web-base)
+# Build & push base images (builder + runtime) ke Docker Hub.
+# Deploy tidak di sini: image base dipakai client image (lihat DEPLOYMENT-GUIDE Tutorial C).
+
+trigger:
+  branches:
+    include:
+      - main
+  tags:
+    include:
+      - 'v*'
+
+pr: none
+
+variables:
+  - group: arsi-web-base          # dockerHubOrg, dockerHubConnection
+  - name: REGISTRY
+    value: docker.io
+
+stages:
+  - stage: BuildPush
+    displayName: Build & push base images
+    jobs:
+      - job: base
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: Node 22 (VERIFY=1)
+            inputs:
+              versionSpec: '22.x'
+          - task: Docker@2
+            displayName: Login Docker Hub
+            inputs:
+              command: login
+              containerRegistry: $(dockerHubConnection)
+          - script: ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh
+            displayName: Build & push base (VERIFY=1 PUSH=1)
+          - script: |
+              BASE_VERSION="$(node -p "require('./web-container/package.json').version")"
+              docker run -d --rm -p 8080:80 --name base-smoke "$(REGISTRY)/$(dockerHubOrg)/arsi-web-base:${BASE_VERSION}"
+              sleep 3
+              curl -sf http://localhost:8080/config.json | grep -q '"client"'
+              docker rm -f base-smoke
+            displayName: Smoke test base image
