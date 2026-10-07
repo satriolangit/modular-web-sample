@@ -1,16 +1,17 @@
 # Panduan Arsitektur — Platform Web Modular
 
-Dokumen ini menjelaskan **bagaimana platform web modular ini disusun**: satu *container* (shell) yang stabil, modul-modul fitur bisnis yang dipilih lewat config, dan satu *extension* per klien untuk customization. Pembaca sasaran adalah developer baru dengan bekal React hooks dan TypeScript dasar; setiap istilah teknis dijelaskan saat pertama muncul. Bagian I (§1–§3) memberi orientasi dan model mental, Bagian II (§4–§15) membahas tiap mekanisme secara teknis. Dokumen ini menjelaskan *cara kerja*; aturan yang mengikat (wajib/dilarang) ada di `CONTRACT`. Padanan bahasa Inggris: `ARCHITECTURE.en.md`.
+Dokumen ini menjelaskan **bagaimana platform web modular ini disusun**: satu *container* (shell) yang stabil, modul-modul fitur bisnis yang dipilih lewat config, dan satu *extension* per klien untuk customization. Pembaca sasaran adalah developer baru dengan bekal React hooks dan TypeScript dasar; setiap istilah teknis dijelaskan saat pertama muncul. Bagian I (§1–§8) memberi orientasi dan membedah tiap mekanisme, Bagian II (§9–§15) adalah referensi kerja. Dokumen ini menjelaskan *cara kerja*; aturan yang mengikat (wajib/dilarang) ada di `CONTRACT`. Padanan bahasa Inggris: `ARCHITECTURE.en.md`.
 
 **Peta pembaca:**
 
-| Jika Anda...                                                  | Mulai dari                       |
-| ------------------------------------------------------------- | -------------------------------- |
-| Baru di proyek dan butuh gambaran besar                       | Bagian I — Orientasi (§1–§3)     |
-| Butuh detail teknis satu mekanisme (DI, routing, slot, build) | Bagian II — Detail (§4–§15)      |
-| Butuh aturan normatif (wajib/dilarang)                        | `CONTRACT`                       |
-| Butuh langkah deploy/operasional                              | `DEPLOYMENT-GUIDE`               |
-| Butuh contoh kode langkah demi langkah                        | `DEVELOPER-GUIDE`                |
+| Jika Anda...                                                  | Mulai dari                        |
+| ------------------------------------------------------------- | --------------------------------- |
+| Baru di proyek dan butuh gambaran besar                       | Bagian I — Orientasi (§1–§3)      |
+| Butuh detail teknis satu mekanisme (DI, routing, slot, build) | Bagian I — Mekanisme (§4–§8)      |
+| Butuh ringkasan referensi (layer, pola, alias, governance)    | Bagian II — Referensi (§9–§15)    |
+| Butuh aturan normatif (wajib/dilarang)                        | `CONTRACT`                        |
+| Butuh langkah deploy/operasional                              | `DEPLOYMENT-GUIDE`                |
+| Butuh contoh kode langkah demi langkah                        | `DEVELOPER-GUIDE`                 |
 
 ---
 
@@ -150,7 +151,7 @@ flowchart LR
     E -.->|slot / route override / service wrapper| C
 ```
 
-Yang perlu diingat: **container memanggil, modul dan extension mendaftar**. Saat boot, container membuat satu objek `deps` berisi 13 layanan — `config`, `logger`, `api`, `apiRegistry`, `events`, `i18n`, `queryClient`, `toast`, `modal`, `notifications`, `slots`, `routes`, `menu` (`web-container/src/di/deps.ts:23`) — lalu `discover()` memanggil `init(deps)` untuk setiap modul di `config.modules`, dan terakhir untuk extension (`web-container/src/bootstrap/discover.ts:12`). Modul mendaftarkan dirinya; panah putus-putus dari extension menunjukkan bahwa extension *menyesuaikan* yang sudah terdaftar, bukan dipanggil balik oleh container.
+Yang perlu diingat: **container memanggil, modul dan extension mendaftar**. Saat boot, container membuat satu objek `deps` berisi 13 layanan — `config`, `logger`, `api`, `apiRegistry`, `events`, `i18n`, `queryClient`, `toast`, `modal`, `notifications`, `slots`, `routes`, `menu` (`web-container/src/di/deps.ts:23`) — lalu `discover()` memanggil `init(deps)` untuk setiap modul di `config.modules`, dan terakhir untuk extension (`web-container/src/bootstrap/discover.ts:12`). Modul dan extension mendaftarkan dirinya saat `init(deps)` dipanggil container; panah putus-putus dari extension menunjukkan arah *penyesuaian* terhadap yang sudah terdaftar, bukan panggilan tambahan dari container.
 
 ### 3.4 Alur Boot dalam Satu Layar
 
@@ -163,7 +164,7 @@ main.tsx
   └─ createRoot(...).render(<RouterProvider router={router} />)
 ```
 
-Urutannya penting: config dibaca dulu, `deps` dibuat **sekali**, semua `init` selesai, baru router dibentuk dan React dirender. Detail tiap langkah ada di Bagian II.
+Urutannya penting: config dibaca dulu, `deps` dibuat **sekali**, semua `init` selesai, baru router dibentuk dan React dirender. Detail tiap langkah ada di §4–§8.
 
 ### 3.5 Di Mana Mulai Membaca Kode
 
@@ -187,7 +188,7 @@ Contoh dari repo ini — login sebagai klien `client-a`, lalu jelajahi aplikasi:
 
 Semua yang "ditambahkan klien" terjadi tanpa mengubah kode modul. Inilah hasil akhir arsitektur ini.
 
-Selanjutnya: Bagian II (§4–§15) membahas urutan boot, kontrak `deps` secara rinci, routing, slot, override, sampai build dan deployment.
+Selanjutnya: §4–§8 membahas urutan boot, kontrak `deps` secara rinci, routing, slot, override, sampai build dan deployment.
 
 ---
 
@@ -325,11 +326,11 @@ deps.routes.override(path, definition);
 
 Jika modul `user-management` tidak ada di `config.modules`, override `/users/:id` dilewati dengan warning, bukan menggagalkan boot.
 
-Container menyusun router dari `getRoutes()` **setelah** discovery: route modul ditempel sebagai children di bawah `/` (di belakang `ProtectedRoute` + `AppShell`, `web-container/src/bootstrap/index.tsx:28-41`), dan leading slash dilepas saat pemetaan (`bootstrap/index.tsx:24`). Alur lengkapnya di §5.
+Container menyusun router dari `getRoutes()` **setelah** discovery: route modul ditempel sebagai children di bawah `/` (di belakang `ProtectedRoute` + `AppShell`, `web-container/src/bootstrap/index.tsx:28-41`), dan leading slash dilepas saat pemetaan (`bootstrap/index.tsx:23`). Alur lengkapnya di §5.
 
 ### 4.5 Service Registry (`apiRegistry`)
 
-Semua akses backend lewat registry bernama supaya modul tidak saling meng-import instance axios. Modul mendaftarkan instance miliknya:
+Service dengan client sendiri didaftarkan ke registry bernama supaya modul tidak saling meng-import instance axios. Modul mendaftarkan instance miliknya:
 
 ```ts
 // web-modules/modules/module-sample/index.tsx:23
@@ -694,10 +695,20 @@ Persist key wajib ber-namespace `<layer>:<name>`. Aturan lengkap: `CONTRACT` §3
 Data dari API → React Query; state UI murni → Zustand. Service wajib berupa *factory function* — menerima axios instance dan mengembalikan objek service — supaya tidak menyentuh `deps` dan mudah diuji.
 
 ```ts
-// web-modules/modules/user-management/hooks/useUser.ts
-const api = useApi();
-const service = useMemo(() => createUserService(api), [api]);
-return useQuery({ queryKey: userKeys.list(params), queryFn: () => service.list(params) });
+// web-modules/modules/user-management/hooks/useUser.ts:17-29
+function useUserService() {
+  const apiRegistry = useApiRegistry();
+  return useMemo(() => createUserService(apiRegistry.get('user')), [apiRegistry]);
+}
+
+export function useUserList(params?: UserListParams) {
+  const service = useUserService();
+
+  return useQuery({
+    queryKey: userKeys.list(params),
+    queryFn: () => service.list(params),
+  });
+}
 ```
 
 Query key per module ada di `queryKeys.ts`, ber-namespace, dan di-export `public.ts` supaya extension bisa meng-invalidate cache. `QueryClient` hanya dibuat container; setiap mutation meng-invalidate key yang relevan. Aturan lengkap: `CONTRACT` §5.
@@ -852,7 +863,7 @@ Item dari ARCHITECTURE lama §21 yang **belum** selesai; item yang sudah jadi (F
 
 **Fase 4 — Long-term (evaluasi)**
 
-- ⬜ Migrasi dari path mapping ke package registry bila jumlah module menuntut.
+- ⬜ Migrasi dari path mapping ke package registry bila jumlah module menuntut (termasuk evaluasi Azure Artifacts sebagai kandidat registry).
 - ⬜ Contract test otomatis di CI untuk setiap module yang di-override.
 - ⬜ Automated dependency upgrade.
 - ⬜ Micro-frontend — hanya bila kebutuhan isolasi runtime nyata muncul.

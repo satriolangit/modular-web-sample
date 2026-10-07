@@ -1,16 +1,17 @@
 # Architecture Guide — Modular Web Platform
 
-This document explains **how this modular web platform is put together**: one stable *container* (shell), business feature modules selected via config, and one *extension* per client for customization. It targets new developers who already know React hooks and basic TypeScript; every technical term is defined the first time it appears. Part I (§1–§3) provides orientation and a mental model; Part II (§4–§15) covers each mechanism in technical detail. This document explains *how it works*; binding rules (must/must not) live in `CONTRACT`. Indonesian version: `ARCHITECTURE.md`.
+This document explains **how this modular web platform is put together**: one stable *container* (shell), business feature modules selected via config, and one *extension* per client for customization. It targets new developers who already know React hooks and basic TypeScript; every technical term is defined the first time it appears. Part I (§1–§8) provides orientation and dissects each mechanism; Part II (§9–§15) is the working reference. This document explains *how it works*; binding rules (must/must not) live in `CONTRACT`. Indonesian version: `ARCHITECTURE.md`.
 
 **Reader map:**
 
-| If you...                                                            | Start from                       |
-| -------------------------------------------------------------------- | -------------------------------- |
-| Are new to the project and need the big picture                      | Part I — Orientation (§1–§3)     |
-| Need technical detail on one mechanism (DI, routing, slots, build)   | Part II — Detail (§4–§15)        |
-| Need normative rules (must/must not)                                 | `CONTRACT`                       |
-| Need deployment/operational steps                                    | `DEPLOYMENT-GUIDE`               |
-| Need step-by-step code examples                                      | `DEVELOPER-GUIDE`                |
+| If you...                                                            | Start from                        |
+| -------------------------------------------------------------------- | --------------------------------- |
+| Are new to the project and need the big picture                      | Part I — Orientation (§1–§3)      |
+| Need technical detail on one mechanism (DI, routing, slots, build)   | Part I — Mechanisms (§4–§8)       |
+| Need a compact reference (layers, patterns, aliases, governance)     | Part II — Reference (§9–§15)      |
+| Need normative rules (must/must not)                                 | `CONTRACT`                        |
+| Need deployment/operational steps                                    | `DEPLOYMENT-GUIDE`                |
+| Need step-by-step code examples                                      | `DEVELOPER-GUIDE`                 |
 
 ---
 
@@ -150,7 +151,7 @@ flowchart LR
     E -.->|slot / route override / service wrapper| C
 ```
 
-Key takeaway: **the container calls, modules and extensions register**. At boot, the container creates one `deps` object holding 13 services — `config`, `logger`, `api`, `apiRegistry`, `events`, `i18n`, `queryClient`, `toast`, `modal`, `notifications`, `slots`, `routes`, `menu` (`web-container/src/di/deps.ts:23`) — then `discover()` calls `init(deps)` for every module in `config.modules`, and finally for the extension (`web-container/src/bootstrap/discover.ts:12`). Modules register themselves; the dotted arrow from the extension means the extension *adjusts* what is already registered, rather than being called back by the container.
+Key takeaway: **the container calls, modules and extensions register**. At boot, the container creates one `deps` object holding 13 services — `config`, `logger`, `api`, `apiRegistry`, `events`, `i18n`, `queryClient`, `toast`, `modal`, `notifications`, `slots`, `routes`, `menu` (`web-container/src/di/deps.ts:23`) — then `discover()` calls `init(deps)` for every module in `config.modules`, and finally for the extension (`web-container/src/bootstrap/discover.ts:12`). Modules and extensions register themselves when the container calls `init(deps)`; the dotted arrow from the extension shows the *adjustment* direction toward what is already registered, not an extra call from the container.
 
 ### 3.4 The Boot Flow on One Screen
 
@@ -163,7 +164,7 @@ main.tsx
   └─ createRoot(...).render(<RouterProvider router={router} />)
 ```
 
-The order matters: config is read first, `deps` is created **once**, all `init` calls finish, and only then are the router and React rendered. Each step is detailed in Part II.
+The order matters: config is read first, `deps` is created **once**, all `init` calls finish, and only then are the router and React rendered. Each step is detailed in §4–§8.
 
 ### 3.5 Where to Start Reading Code
 
@@ -187,7 +188,7 @@ An example from this repo — log in as client `client-a`, then browse the app:
 
 Everything the client "added" happens without changing module code. That is the payoff of this architecture.
 
-Next: Part II (§4–§15) covers the boot sequence, the `deps` contract in detail, routing, slots, overrides, and finally build and deployment.
+Next: §4–§8 covers the boot sequence, the `deps` contract in detail, routing, slots, overrides, and finally build and deployment.
 
 ---
 
@@ -325,11 +326,11 @@ deps.routes.override(path, definition);
 
 If the `user-management` module is not in `config.modules`, the `/users/:id` override is skipped with a warning instead of failing boot.
 
-The container builds the router from `getRoutes()` **after** discovery: module routes are attached as children under `/` (behind `ProtectedRoute` + `AppShell`, `web-container/src/bootstrap/index.tsx:28-41`), with the leading slash stripped during mapping (`bootstrap/index.tsx:24`). The full flow is in §5.
+The container builds the router from `getRoutes()` **after** discovery: module routes are attached as children under `/` (behind `ProtectedRoute` + `AppShell`, `web-container/src/bootstrap/index.tsx:28-41`), with the leading slash stripped during mapping (`bootstrap/index.tsx:23`). The full flow is in §5.
 
 ### 4.5 Service Registry (`apiRegistry`)
 
-All backend access goes through a named registry so modules never import each other's axios instances. A module registers its own instance:
+Services with their own client are registered in a named registry so modules never import each other's axios instances. A module registers its own instance:
 
 ```ts
 // web-modules/modules/module-sample/index.tsx:23
@@ -694,10 +695,20 @@ Persist keys must be namespaced `<layer>:<name>`. Full rules: `CONTRACT` §3.
 API data → React Query; pure UI state → Zustand. A service must be a *factory function* — it takes an axios instance and returns the service object — so it never touches `deps` and is easy to test.
 
 ```ts
-// web-modules/modules/user-management/hooks/useUser.ts
-const api = useApi();
-const service = useMemo(() => createUserService(api), [api]);
-return useQuery({ queryKey: userKeys.list(params), queryFn: () => service.list(params) });
+// web-modules/modules/user-management/hooks/useUser.ts:17-29
+function useUserService() {
+  const apiRegistry = useApiRegistry();
+  return useMemo(() => createUserService(apiRegistry.get('user')), [apiRegistry]);
+}
+
+export function useUserList(params?: UserListParams) {
+  const service = useUserService();
+
+  return useQuery({
+    queryKey: userKeys.list(params),
+    queryFn: () => service.list(params),
+  });
+}
 ```
 
 Per-module query keys live in `queryKeys.ts`, are namespaced, and are exported through `public.ts` so extensions can invalidate the cache. Only the container creates the `QueryClient`; every mutation invalidates the relevant keys. Full rules: `CONTRACT` §5.
@@ -852,7 +863,7 @@ Items from the old ARCHITECTURE §21 that are **not done yet**; finished ones (p
 
 **Phase 4 — Long-term (evaluation)**
 
-- ⬜ Migrate from path mapping to a package registry if the module count demands it.
+- ⬜ Migrate from path mapping to a package registry if the module count demands it (including evaluating Azure Artifacts as a candidate registry).
 - ⬜ Automated contract tests in CI for every overridden module.
 - ⬜ Automated dependency upgrade.
 - ⬜ Micro-frontend — only if a real runtime-isolation need appears.
