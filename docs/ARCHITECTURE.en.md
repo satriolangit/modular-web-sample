@@ -341,7 +341,7 @@ const sampleClient = axios.create({
 deps.apiRegistry.register('module-sample', sampleClient);
 ```
 
-- A module's service name = the module name (`'module-sample'`).
+- A module's service name is not always the module name: follow `CONTRACT` §4.6 — `user-management` → `user`, `product-management` → `product`, `module-sample` → `module-sample`.
 - Extension convention: **client name prefix** — `<client>.<service>` — e.g. `deps.apiRegistry.register('client-a.audit', auditClient)` (`web-extension-client-a/src/index.tsx:60`). That makes it impossible for an extension service to collide with a base service.
 - The core `auth` service is registered by the container (`web-container/src/di/deps.ts:45`).
 - Duplicate → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`); `get(name)` throws for an unknown name (`:22`); `has` is available for checks.
@@ -399,7 +399,7 @@ sequenceDiagram
     participant M as Module
     participant D as deps
     participant X as Extension
-    B->>G: import loader per nama di config.modules
+    B->>G: import loader by name from config.modules
     B->>M: entry.default(deps)
     M->>D: i18n.addResourceBundle / apiRegistry.register
     M->>D: menu.register / routes.add / modal.register
@@ -407,7 +407,7 @@ sequenceDiagram
     B->>X: extension.default(deps)
     X->>D: slots.register / routes.override (guard routes.has)
     X->>D: apiRegistry.register("client-x.audit")
-    Note over B,X: setelah semua init, container membangun router dari routes.getRoutes()
+    Note over B,X: after all init, the container builds the router from routes.getRoutes()
 ```
 
 ---
@@ -431,16 +431,16 @@ sequenceDiagram
     participant BS as bootstrap()
     participant DS as discover()
     participant R as Router + React
-    U->>MN: muat /index.html + bundle
+    U->>MN: load /index.html + bundle
     MN->>LC: fetch("/config.json", {cache: "no-store"})
     LC-->>MN: AppConfig {client, modules, apiBase, featureFlags}
     MN->>BS: bootstrap(config)
     BS->>BS: createDeps(config)
     BS->>DS: discover(deps)
-    DS->>DS: init modules (config.modules) lalu extension
-    DS-->>BS: registry terisi
+    DS->>DS: init modules (config.modules) then extension
+    DS-->>BS: registries filled
     BS->>R: createBrowserRouter(routes.getRoutes())
-    R-->>U: render AppShell (login / halaman modul)
+    R-->>U: render AppShell (login / module page)
 ```
 
 **Three things to underline.**
@@ -506,11 +506,11 @@ The consequence is exactly the **one image, many environments** principle (§1.2
 
 ```mermaid
 flowchart TD
-    A[Dev server / entrypoint] --> B{VITE_CONFIG_JSON diisi?}
-    B -->|ya| C[/config.json = JSON dari env/]
-    B -->|tidak| D{env individual diisi?}
-    D -->|ya| E[env menimpa field pada base public/config.json]
-    D -->|tidak| F[base public/config.json apa adanya]
+    A[Dev server / entrypoint] --> B{VITE_CONFIG_JSON set?}
+    B -->|yes| C[/config.json = JSON from env/]
+    B -->|no| D{individual envs set?}
+    D -->|yes| E[env overrides fields on the base public/config.json]
+    D -->|no| F[base public/config.json as-is]
     E --> G[/config.json final/]
     F --> G
 ```
@@ -535,7 +535,7 @@ Jargon: **additive** means it can only add, never remove; **invasive** means it 
 
 - **Level 1 — slot.** A UI extension point declared by a module (§4.3). The safest because it changes nothing that already exists. Its limit: one slot holds only one component — a second registration throws `[slots] slot "..." already has a component registered` (`web-container/src/slots/slotRegistry.ts:17`).
 - **Level 2 — route override.** `override(path, {element, meta})` replaces the **whole entry**, not just the fields you pass; the path itself cannot be changed via override. Pass `meta` again (e.g. `{ group, module }`) so module attribution is not lost. Without a guard, overriding a path that is not registered throws `[routes] cannot override unknown route "<path>"` (`web-container/src/routes/routeRegistry.ts:33`).
-- **Level 3 — service wrapper.** The service registry has no concept of overriding, so an extension registers a **new** name namespaced as `<client>.<service>` (`CONTRACT` §4.5); that makes a collision with a base service impossible. Core services (`auth`, `user`, `product`) are registered by the base (`auth` at `web-container/src/di/deps.ts:45`) and **must not** be overridden by extensions. A duplicate name → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`).
+- **Level 3 — service wrapper.** The service registry has no concept of overriding, so an extension registers a **new** name namespaced as `<client>.<service>` (`CONTRACT` §4.5); that makes a collision with a base service impossible. Core services (`auth`, `user`) are registered by the base (`auth` at `web-container/src/di/deps.ts:45`) and **must not** be overridden by extensions. A duplicate name → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`).
 
 ### 7.1 Guard for Optional Modules
 
@@ -575,12 +575,12 @@ sequenceDiagram
     participant RR as RouteRegistry
     participant L as Logger
     X->>RR: has("/module-sample/extension-points")?
-    alt route terdaftar
+    alt route registered
         RR-->>X: true
         X->>RR: override(path, {element, meta})
-    else belum terdaftar (module nonaktif)
+    else not registered (module inactive)
         RR-->>X: false
-        X->>L: warn("override dilewati")
+        X->>L: warn("override skipped")
     end
 ```
 

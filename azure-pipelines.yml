@@ -38,6 +38,7 @@ stages:
           - script: ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh
             displayName: Build & push base (VERIFY=1 PUSH=1)
           - script: |
+              set -euo pipefail
               BASE_VERSION="$(node -p "require('./web-container/package.json').version")"
               docker run -d --rm -p 8080:80 --name base-smoke "$(REGISTRY)/$(dockerHubOrg)/arsi-web-base:${BASE_VERSION}"
               sleep 3

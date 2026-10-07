@@ -392,6 +392,8 @@ export function createOrderService(api: AxiosInstance) {
     },
   };
 }
+
+export type OrderService = ReturnType<typeof createOrderService>;
 ```
 
 - `queryKeys.ts` — root key **wajib** `['<module>', '<entity>']`:
@@ -717,7 +719,7 @@ Guard **wajib** untuk route milik modul yang bisa dinonaktifkan (`CONTRACT §12.
 
 ### Langkah 3 — Level 3: service wrapper
 
-Extension **tidak boleh** meng-override service core (`auth`, `user`, `order`). Pola yang benar: daftarkan service baru ber-namespace `<client>.<service>` (`src/index.tsx:56-60`):
+Extension **tidak boleh** meng-override service core (`auth`, `user`). Pola yang benar: daftarkan service baru ber-namespace `<client>.<service>` (`src/index.tsx:56-60`):
 
 ```tsx
 const auditClient = axios.create({ baseURL: '/api/audit-client-a', timeout: 5000 });

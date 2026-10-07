@@ -82,7 +82,7 @@ Adopting a new base = a PR that bumps `baseVersion`, then the client image is re
 
 - The file location can be overridden with `CONFIG_FILE` (default `/usr/share/nginx/html/config.json`).
 - `VITE_CONFIG_JSON` wins outright and its value **must** be a JSON object (starts `{`, ends `}`); otherwise the container fails to start with `[entrypoint] VITE_CONFIG_JSON must be a JSON object`.
-- Every module under `web-modules/modules/` is always bundled; `VITE_MODULES` only selects which ones are active. A module name must match its folder name — otherwise the app fails to boot with `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
+- Every module under `web-modules/modules/` is always bundled; `VITE_MODULES` only selects which ones are active. A module name must match its folder name — otherwise the app fails to boot with ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)``.
 - nginx serves `/config.json` with `Cache-Control: no-store`, serves `/assets/` as immutable for 1 year, and provides the SPA fallback via `try_files $uri $uri/ /index.html`.
 - The app fetches `/config.json` with `cache: 'no-store'`; the cache-header check is in A.4.
 
@@ -793,7 +793,7 @@ sudo systemctl status arsi-<client>
 | `502 Bad Gateway` from the proxy | Container down or wrong port. `docker compose ps`, `curl -s http://127.0.0.1:8080/`; check the `ports` mapping. |
 | Site reachable on the VM but not from the internet | DNS not pointing to the VM, or `ufw` missing 80/443. `dig app.example.com`, `sudo ufw status`. |
 | `bind: address already in use` on `up` | Host port conflict. `ss -ltnp \| grep 8080`, choose another port, update the proxy upstream. |
-| App boots but shows `[bootstrap] module "x" … has no entry` | `VITE_MODULES` includes a name that is not bundled in the image. Fix `.env` or rebuild the base with that module. |
+| App boots but shows ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)`` | `VITE_MODULES` includes a name that is not bundled in the image. Fix `.env` or rebuild the base with that module. |
 | Config changes not visible | Container not recreated, or browser cache. `docker compose up -d --force-recreate`, hard-refresh; `/config.json` is `no-store`. |
 | Container exits with `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | The `VITE_CONFIG_JSON` value is not a JSON object (truncated, array, misquoted). Fix it, or unset it to use the individual `VITE_*` envs. |
 | App boots with no modules after a full override | The JSON is valid but `modules` is empty/missing. Add the bundled module names; verify with `curl /config.json`. |
@@ -947,6 +947,7 @@ stages:
           - script: ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh
             displayName: Build & push base (VERIFY=1 PUSH=1)
           - script: |
+              set -euo pipefail
               BASE_VERSION="$(node -p "require('./web-container/package.json').version")"
               docker run -d --rm -p 8080:80 --name base-smoke "$(REGISTRY)/$(dockerHubOrg)/arsi-web-base:${BASE_VERSION}"
               sleep 3
@@ -1242,7 +1243,7 @@ This table covers build, config, registry, SSH, and pipeline issues; VM runtime 
 
 | Symptom | Cause & fix |
 | --- | --- |
-| `[bootstrap] module "x" … has no entry` | `VITE_MODULES` includes a name that is not a folder under `web-modules/modules/`. Fix the env or add the module to the build. |
+| ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)`` | `VITE_MODULES` includes a name that is not a folder under `web-modules/modules/`. Fix the env or add the module to the build. |
 | Module missing even though the env is correct | Module not bundled (stale build) or absent from runtime `config.json`. Check `curl /config.json`, rebuild the image. |
 | Config changes not visible | Browser cache (must be `no-store`) or the container was not recreated. `docker compose up -d --force-recreate`. |
 | Container exits with `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | The `VITE_CONFIG_JSON` value is not a JSON object (truncated, array, or misquoted). Fix it, or unset it to use the individual envs. |

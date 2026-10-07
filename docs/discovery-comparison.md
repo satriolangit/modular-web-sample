@@ -62,7 +62,7 @@ Branch `feat/module-loaders-codegen`. Loader map `src/bootstrap/moduleLoaders.ge
 | --- | --- | --- |
 | Commit wiring per modul | `35bee47` — 7 file, +36 baris (aliases +14, tsconfig container +4, discover +1, Dockerfile +1, config +2, web-modules aliases +12, tsconfig +4/−2) | Tidak ada file wiring; `0fe21d3` hanya file modul + lockfile web-modules |
 | Pertumbuhan | Linear per modul (alias & paths bertambah terus) | Konstan (0) |
-| Titik gagal | Lupa 1 dari 7 file → `[bootstrap] ... not wired` / chunk hilang; guard hanya meng-cover Docker | Fail-fast otomatis (`has no entry in web-modules/modules`) |
+| Titik gagal | Lupa 1 dari 7 file → `[bootstrap] ... not wired` / chunk hilang; guard hanya meng-cover Docker | Fail-fast otomatis (pesan `is not wired in moduleLoaders.generated.ts`) |
 | Kerja paralel antar tim modul | Semua tim mengedit file yang sama (`aliases.cjs`, `tsconfig.json`, `discover.ts`) → konflik merge rutin | Tidak ada file bersama → nol konflik |
 | Repo web-modules | Alias + tsconfig per modul juga wajib edit | Tidak perlu |
 

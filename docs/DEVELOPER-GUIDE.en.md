@@ -392,6 +392,8 @@ export function createOrderService(api: AxiosInstance) {
     },
   };
 }
+
+export type OrderService = ReturnType<typeof createOrderService>;
 ```
 
 - `queryKeys.ts` — the root key **must** be `['<module>', '<entity>']`:
@@ -717,7 +719,7 @@ The guard is **required** for routes of modules that can be disabled (`CONTRACT 
 
 ### Step 3 — Level 3: service wrapper
 
-An extension **must not** override core services (`auth`, `user`, `order`). The correct pattern: register a new service namespaced as `<client>.<service>` (`src/index.tsx:56-60`):
+An extension **must not** override core services (`auth`, `user`). The correct pattern: register a new service namespaced as `<client>.<service>` (`src/index.tsx:56-60`):
 
 ```tsx
 const auditClient = axios.create({ baseURL: '/api/audit-client-a', timeout: 5000 });

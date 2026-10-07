@@ -82,7 +82,7 @@ Adopsi base baru = PR yang menaikkan `baseVersion`, lalu image client dibangun u
 
 - Lokasi file bisa dioverride lewat `CONFIG_FILE` (default `/usr/share/nginx/html/config.json`).
 - `VITE_CONFIG_JSON` menang mutlak dan nilainya **wajib** object JSON (diawali `{`, diakhiri `}`); kalau tidak, container gagal start dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`.
-- Semua modul di `web-modules/modules/` selalu ter-bundle; `VITE_MODULES` hanya memilih yang aktif. Nama modul harus sama dengan nama folder — kalau tidak, app gagal boot dengan `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
+- Semua modul di `web-modules/modules/` selalu ter-bundle; `VITE_MODULES` hanya memilih yang aktif. Nama modul harus sama dengan nama folder — kalau tidak, app gagal boot dengan ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)``.
 - nginx mengirim `/config.json` dengan `Cache-Control: no-store`, melayani `/assets/` sebagai immutable 1 tahun, dan fallback SPA memakai `try_files $uri $uri/ /index.html`.
 - Aplikasi membaca `/config.json` dengan `cache: 'no-store'`; verifikasi header cache ada di A.4.
 
@@ -793,7 +793,7 @@ sudo systemctl status arsi-<client>
 | `502 Bad Gateway` dari proxy | Container mati atau port salah. `docker compose ps`, `curl -s http://127.0.0.1:8080/`; cek mapping `ports`. |
 | Situs jalan di VM tapi tidak dari internet | DNS belum mengarah ke VM, atau `ufw` belum membuka 80/443. `dig app.example.com`, `sudo ufw status`. |
 | `bind: address already in use` saat `up` | Port host bentrok. `ss -ltnp \| grep 8080`, pilih port lain, sesuaikan upstream proxy. |
-| App boot tapi muncul `[bootstrap] module "x" … has no entry` | `VITE_MODULES` memuat nama yang tidak ter-bundle di image. Perbaiki `.env` atau rebuild base dengan module itu. |
+| App boot tapi muncul ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)`` | `VITE_MODULES` memuat nama yang tidak ter-bundle di image. Perbaiki `.env` atau rebuild base dengan module itu. |
 | Perubahan config tidak terlihat | Container belum di-recreate, atau cache browser. `docker compose up -d --force-recreate`, hard refresh; `/config.json` `no-store`. |
 | Container keluar dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | Nilai `VITE_CONFIG_JSON` bukan object JSON (terpotong, array, salah kutip). Perbaiki, atau kosongkan agar memakai env `VITE_*` individual. |
 | App boot tanpa module setelah full override | JSON valid tetapi `modules` kosong/hilang. Tambahkan nama module yang ter-bundle; verifikasi via `curl /config.json`. |
@@ -947,6 +947,7 @@ stages:
           - script: ORG="$(dockerHubOrg)" VERIFY=1 PUSH=1 ./ci/build-base.sh
             displayName: Build & push base (VERIFY=1 PUSH=1)
           - script: |
+              set -euo pipefail
               BASE_VERSION="$(node -p "require('./web-container/package.json').version")"
               docker run -d --rm -p 8080:80 --name base-smoke "$(REGISTRY)/$(dockerHubOrg)/arsi-web-base:${BASE_VERSION}"
               sleep 3
@@ -1242,7 +1243,7 @@ Tabel ini mencakup build, config, registry, SSH, dan pipeline; gejala runtime VM
 
 | Gejala | Penyebab & solusi |
 | --- | --- |
-| `[bootstrap] module "x" … has no entry` | `VITE_MODULES` memuat nama yang bukan folder di `web-modules/modules/`. Perbaiki env atau tambahkan modul ke build. |
+| ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)`` | `VITE_MODULES` memuat nama yang bukan folder di `web-modules/modules/`. Perbaiki env atau tambahkan modul ke build. |
 | Modul tidak muncul walau env benar | Modul belum ter-bundle (build lama) atau tidak ada di `config.json` runtime. Cek `curl /config.json`, rebuild image. |
 | Perubahan config tidak terlihat | Browser cache (harus `no-store`) atau container belum di-recreate. `docker compose up -d --force-recreate`. |
 | Container gagal start: `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | `VITE_CONFIG_JSON` bukan object JSON (terpotong, array, atau salah kutip). Perbaiki nilainya, atau kosongkan untuk memakai env individual. |

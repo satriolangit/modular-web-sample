@@ -341,7 +341,7 @@ const sampleClient = axios.create({
 deps.apiRegistry.register('module-sample', sampleClient);
 ```
 
-- Nama service modul = nama modul (`'module-sample'`).
+- Nama service modul tidak selalu sama dengan nama modul: ikuti `CONTRACT` §4.6 — `user-management` → `user`, `product-management` → `product`, `module-sample` → `module-sample`.
 - Konvensi extension: **prefix nama klien** — `<client>.<service>` — mis. `deps.apiRegistry.register('client-a.audit', auditClient)` (`web-extension-client-a/src/index.tsx:60`). Dengan begitu service extension tidak mungkin bentrok dengan service base.
 - Service core `auth` sudah didaftarkan container (`web-container/src/di/deps.ts:45`).
 - Duplikat → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`); `get(name)` melempar bila nama tidak dikenal (`:22`); `has` tersedia untuk pengecekan.
@@ -535,7 +535,7 @@ Jargon: **aditif** berarti hanya bisa menambah dan tidak bisa menghapus; **invas
 
 - **Level 1 — slot.** Titik sambung UI yang dideklarasikan modul (§4.3). Paling aman karena tidak mengubah apa pun yang sudah ada. Batasnya: satu slot hanya boleh diisi satu komponen — pendaftaran kedua melempar `[slots] slot "..." already has a component registered` (`web-container/src/slots/slotRegistry.ts:17`).
 - **Level 2 — route override.** `override(path, {element, meta})` mengganti **seluruh entry**, bukan hanya field yang dikirim; path-nya sendiri tidak bisa diubah lewat override. Sertakan `meta` lagi (mis. `{ group, module }`) supaya atribusi modul tidak hilang. Tanpa guard, override path yang belum terdaftar melempar `[routes] cannot override unknown route "<path>"` (`web-container/src/routes/routeRegistry.ts:33`).
-- **Level 3 — service wrapper.** Registry service tidak mengenal penimpaan, jadi extension mendaftarkan nama **baru** dengan namespace `<client>.<service>` (`CONTRACT` §4.5); dengan begitu tidak mungkin bentrok dengan service base. Service core (`auth`, `user`, `product`) didaftarkan base (`auth` di `web-container/src/di/deps.ts:45`) dan **tidak boleh** di-override extension. Nama duplikat → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`).
+- **Level 3 — service wrapper.** Registry service tidak mengenal penimpaan, jadi extension mendaftarkan nama **baru** dengan namespace `<client>.<service>` (`CONTRACT` §4.5); dengan begitu tidak mungkin bentrok dengan service base. Service core (`auth`, `user`) didaftarkan base (`auth` di `web-container/src/di/deps.ts:45`) dan **tidak boleh** di-override extension. Nama duplikat → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`).
 
 ### 7.1 Guard untuk Module Opsional
 
