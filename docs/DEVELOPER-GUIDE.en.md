@@ -1037,14 +1037,14 @@ Find the symptom, then follow the fix column. If an error is not listed here, ch
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts` | The module is in config but the loader map is stale. | `cd web-container && npm run gen:modules`, restart the dev server; check the package name `@arsi/module-<folder>`. |
+| ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)`` | The module is in config but the loader map is stale. | `cd web-container && npm run gen:modules`, restart the dev server; check the package name `@arsi/module-<folder>`. |
 | `[routes] cannot override unknown route "<path>"` | The extension overrides a route of a module that is off/not registered. | Wrap the override in a `deps.routes.has` guard + `logger.warn` (`CONTRACT §12.4`); check the exact path. |
 | Dev config does not match (wrong client/modules/apiBase) | `.env` and `public/config.json` merged differently than expected. | Individual envs override the `public/config.json` base; `VITE_CONFIG_JSON` wins outright. Check the `[dev]`/`[dev-config]` lines, fix `.env`, restart. |
 | `[check:base] baseVersion manifest (x) != base image (y)` | The `manifest.json` pin differs from the built base tag. | Align `baseVersion` with the base tag, or build/use the right base tag (`GUIDE §9`). |
 | `npm ci` fails: `can only install packages when your package.json and package-lock.json are in sync` / `Missing: ... from lock file` | The lockfile did not change with it (fresh pull, new dependency/module). | Run `npm install` in the changed repo and commit `package-lock.json`; CI/Docker always uses `npm ci`. |
 | `[apiRegistry] service "x" is not registered` | The service is registered in an `init` that has not run, or the name is wrong. | Check the module order in config and the names in `register`/`get` (`CONTRACT §4.6`). |
-| `[slots] slot "x" already has a component` | The slot was filled twice or `init` re-ran without a guard. | Ensure the `initialized` guard; one slot is for one extension only. |
-| `init` runs twice in dev | React StrictMode. | The container already runs it `runOnce`; modules/extensions still need the `initialized` guard (`GUIDE §3`). |
+| `[slots] slot "x" already has a component registered` | The slot was filled twice or `init` re-ran without a guard. | Ensure the `initialized` guard; one slot is for one extension only. |
+| `init` runs twice in dev | React StrictMode. | The container already guarantees a single boot via `bootstrapPromise`; modules/extensions still need the `initialized` guard (`GUIDE §3`). |
 | Changes do not appear after switching clients | The `current-client` symlink is read at server start. | `readlink web-container/current-client`; re-run `CLIENT=<client> npm run link:client`, restart dev. |
 | Colors do not change with the theme | Raw hex or `dark:` utilities in a component. | Replace with tokens (`GUIDE §5.5`); run `tokens.test.ts`. |
 | Extension test: `Cannot read properties of null (reading 'useCallback')` | Two React copies (shared/Radix vs extension). | Alias `react`/`react-dom` in the extension's `vitest.config.ts` + `server.deps.inline` for `@arsi/shared` & `@radix-ui`. |

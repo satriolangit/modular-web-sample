@@ -1037,14 +1037,14 @@ Cari gejalanya, lalu ikuti kolom solusi. Bila pesan error tidak ada di sini, cek
 
 | Gejala | Penyebab | Solusi |
 | --- | --- | --- |
-| `[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts` | Module terdaftar di config tapi loader map stale. | `cd web-container && npm run gen:modules`, restart dev server; cek nama package `@arsi/module-<folder>`. |
+| ``[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts (run `npm run gen:modules`)`` | Module terdaftar di config tapi loader map stale. | `cd web-container && npm run gen:modules`, restart dev server; cek nama package `@arsi/module-<folder>`. |
 | `[routes] cannot override unknown route "<path>"` | Extension meng-override route module yang tidak aktif/belum terdaftar. | Bungkus override dengan guard `deps.routes.has` + `logger.warn` (`CONTRACT §12.4`); cek path persis. |
 | Config dev tidak sesuai (client/modules/apiBase salah) | `.env` dan `public/config.json` tertimpa tidak seperti dugaan. | Env individual menimpa base `public/config.json`; `VITE_CONFIG_JSON` menang penuh. Periksa baris `[dev]`/`[dev-config]`, perbaiki `.env`, restart. |
 | `[check:base] baseVersion manifest (x) != base image (y)` | Pin `manifest.json` tidak sama dengan tag base yang dibangun. | Samakan `baseVersion` dengan tag base, atau bangun/pakai tag base yang benar (`GUIDE §9`). |
 | `npm ci` gagal: `can only install packages when your package.json and package-lock.json are in sync` / `Missing: ... from lock file` | Lockfile tidak ikut berubah (pull baru, dependency/module baru). | Jalankan `npm install` di repo yang berubah, commit `package-lock.json`; di CI/Docker selalu `npm ci`. |
 | `[apiRegistry] service "x" is not registered` | Service didaftarkan di `init` yang belum jalan, atau salah nama. | Cek urutan modul di config dan nama di `register`/`get` (`CONTRACT §4.6`). |
-| `[slots] slot "x" already has a component` | Slot diisi dua kali atau `init` berjalan ulang tanpa guard. | Pastikan guard `initialized`; satu slot hanya untuk satu extension. |
-| `init` jalan dua kali saat dev | React StrictMode. | Container sudah `runOnce`; module/extension tetap wajib punya guard `initialized` (`GUIDE §3`). |
+| `[slots] slot "x" already has a component registered` | Slot diisi dua kali atau `init` berjalan ulang tanpa guard. | Pastikan guard `initialized`; satu slot hanya untuk satu extension. |
+| `init` jalan dua kali saat dev | React StrictMode. | Container sudah memastikan boot sekali lewat `bootstrapPromise`; module/extension tetap wajib punya guard `initialized` (`GUIDE §3`). |
 | Perubahan tidak muncul setelah ganti client | Symlink `current-client` dibaca saat server start. | `readlink web-container/current-client`; ulangi `CLIENT=<client> npm run link:client`, restart dev. |
 | Warna tidak berubah saat ganti tema | Hex mentah atau utility `dark:` di komponen. | Ganti dengan token (`GUIDE §5.5`); jalankan `tokens.test.ts`. |
 | Test extension: `Cannot read properties of null (reading 'useCallback')` | Dua salinan React (shared/Radix vs extension). | Alias `react`/`react-dom` di `vitest.config.ts` extension + `server.deps.inline` untuk `@arsi/shared` & `@radix-ui`. |
