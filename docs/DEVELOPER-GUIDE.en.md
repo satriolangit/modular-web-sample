@@ -863,3 +863,334 @@ CLIENT=client-<x> npm run link:client && npm run dev
 ```
 
 Building & pushing the client image uses `ci/build-client.sh` (the base is not rebuilt); the full steps are in `DEPLOYMENT-GUIDE.en.md` §3–§5.
+
+---
+
+## Chapter 5 — Quick Conventions
+
+Open this chapter while writing code. The full rules live in `CONTRACT §15`; this is the summary.
+
+### 5.1 Naming
+
+| Aspect | Format | Example |
+| --- | --- | --- |
+| Module folder | kebab-case | `order-management` |
+| Component file | PascalCase | `OrderTable.tsx` |
+| Hook file | `use<Name>.ts` | `useOrder.ts` |
+| Service file | `service.<name>.ts` | `service.order.ts` |
+| Store file | `use<Name>Store.ts` | `useOrderStore.ts` |
+| Slot | `<module>.<slotName>` | `order-management.orderTableActions` |
+| Modal / Event | `<module>.<action>` / `<module>.<entity>.<action>` | `order-management.create`, `order-management.order.updated` |
+| i18n namespace | `<module>` | `order-management` |
+| Service name | `<module>` / `<client>.<service>` | `order`, `client-a.audit` |
+| Query key root | `[<module>, <entity>]` | `['order-management', 'order']` |
+| Store persist key | `module:<name>` / `container:<name>` | `module:order-management` |
+| Config file | `.cjs` | `aliases.cjs`, `tailwind.config.cjs` |
+| Files containing JSX | `.tsx` | `index.tsx`, `OrderListPage.tsx` |
+
+A module package name **must** be `@arsi/module-<folder>` — `gen:modules` fails immediately on a mismatch.
+
+### 5.2 Module folder structure
+
+The standard skeleton of a module (`GUIDE §3` shows how to create one):
+
+```
+order-management/
+├── package.json      # name: @arsi/module-order-management
+├── index.tsx         # init(deps) — all registrations
+├── public.ts         # the only door for extensions
+├── types.ts          # domain types
+├── slots.ts          # UI extension points
+├── events.ts         # cross-module communication
+├── modals.ts         # modals that can be opened
+├── queryKeys.ts      # query key factory
+├── services/         # factory functions, no deps
+├── hooks/            # service + React Query
+├── store/            # Zustand, persist key module:<name>
+├── components/       # module UI components
+├── pages/            # route pages
+└── i18n/{en,id}.json # namespace = folder name
+```
+
+An extension uses a similar structure, plus `overrides/<module>/` for replacement pages (`GUIDE §4`).
+
+### 5.3 Imports: wrong → right
+
+| ✗ | ✓ |
+| --- | --- |
+| `import axios from 'axios'` in a service/hook | only in `index.tsx` when registering the service |
+| `import { useQuery } from '@tanstack/react-query'` | `import { useQuery } from '@arsi/container'` |
+| `import { toast } from 'sonner'` | `useToast()` / `deps.toast` |
+| `import i18next from 'i18next'` | `useTranslation()` / `deps.i18n` |
+| `import { Button } from '@arsi/shared/components/ui/button'` | `import { Button } from '@arsi/shared'` |
+| `import { X } from '@arsi/module-user-management/internal'` (extension) | `import { X } from '@arsi/module-user-management'` |
+| `import.meta.env.VITE_*` in a module/extension | `deps.config` / `useConfig()` |
+| Creating your own `QueryClient` | `useQueryClient()` / `deps.queryClient` |
+
+ESLint enforces most of these rules (`no-restricted-imports` per repo).
+
+### 5.4 i18n
+
+- Module namespace = folder name (`order-management`); extension namespace = client id (`client-a`).
+- Every UI string goes through `t()` — never hardcode text.
+- Both `i18n/en.json` and `i18n/id.json` are **required**; ID/EN parity applies to the app too.
+- Keys are descriptive (`menu.orders`, `empty`), not `text1`.
+- An extension may override a module label via `addResourceBundle(..., overwrite=true)` (`GUIDE §4`); full rules in `CONTRACT §6`.
+
+### 5.5 Tailwind styling
+
+Brand: **ARSI Purple `#551AB9`**. Full token table: `CONTRACT §10.4`.
+
+| Rule | Detail |
+| --- | --- |
+| Colors | **Tokens required** (`bg-primary`, `text-success-strong`); raw hex / direct Tailwind palette colors are forbidden. |
+| Hover/selected | `hover:bg-primary-hover` (buttons), `bg-accent` (hover/selected surface). |
+| Status | Tint pattern: `bg-success/10 text-success-strong border-success/20` (same for `warning`/`info`/`destructive`). |
+| Dark mode | Do not use `dark:` — tokens flip automatically (`web-container/src/styles/globals.css`). |
+| Font | Plus Jakarta Sans self-hosted; do not add a Google Fonts `<link>`. |
+| New tokens | Edit `globals.css` + `tailwind.preset.cjs`; the test `web-container/src/styles/tokens.test.ts` must pass. |
+| Container | Self-contained: the container must not import `@arsi/shared` (ESLint). |
+
+### 5.6 Commit & branch
+
+| Item | Rule |
+| --- | --- |
+| Branch | `feat/<short>` or `fix/<short>`, from the main branch of the right repo |
+| Commit | `feat(<scope>): ...` / `fix(<scope>): ...`; `scope` = module or client |
+| Commit content | one purpose — never mix refactoring with a feature |
+| Repo | client overrides → extension repo; module/shared/container → base repo |
+
+---
+
+## Chapter 6 — Testing Playbook
+
+Testing requirements live in `CONTRACT §17`: a module **must** test its public API, an extension **must** test its overrides. These are the patterns proven in the sample repos.
+
+### 6.1 Pattern 1 — fake `deps` + `vi.resetModules()`
+
+Testing `init(deps)` does not use the real container. Create a fake `deps` whose registries are `vi.fn()`, then re-import the module so the `initialized` guard is fresh per test:
+
+```ts
+async function loadInit() {
+  vi.resetModules();                 // the `initialized` guard is false again
+  const mod = await import('../index');
+  return mod.default;
+}
+
+const { deps, apiRegistry, slots, routes } = createFakeDeps(); // fake deps + vi.fn()
+await (await loadInit())(deps);
+
+expect(apiRegistry.register).toHaveBeenCalledWith('client-a.audit', expect.anything());
+expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.anything());
+expect(routes.override).toHaveBeenCalledWith('/users/:id', expect.objectContaining({ element: expect.anything() }));
+```
+
+Living examples: `web-extension-client-a/src/__tests__/init.test.ts` and `web-modules/modules/module-sample/index.test.ts`. Always add an idempotency test: call `init` twice and assert registrations do not repeat (StrictMode).
+
+### 6.2 Pattern 2 — container registry tests
+
+Registry behavior is tested directly under `web-container/src/` by calling its factory without React:
+
+| Registry | Test file | What it guards |
+| --- | --- | --- |
+| Route | `routes/routeRegistry.test.ts` | duplicate `add` → throw; `override` of an unknown path → throw |
+| Slot | `slots/slotRegistry.test.ts` | slot filled twice → throw |
+| Service | `api/apiRegistry.test.ts` | `get` of an unknown name → throw |
+| Menu | `menu/menuRegistry.test.ts` | items ordered & unique |
+| Event | `events/eventBus.test.ts` | `on`/`emit`/`off` |
+
+These tests protect the error messages you meet in `GUIDE §7`.
+
+### 6.3 Pattern 3 — service & query keys
+
+A service is a factory that receives an `AxiosInstance`, so its test only mocks axios:
+
+```ts
+const api = { get: vi.fn(), post: vi.fn() };
+const service = createOrderService(api as unknown as AxiosInstance);
+await service.list({ limit: 5 });
+expect(api.get).toHaveBeenCalledWith('/orders', { params: { limit: 5, skip: 0 } });
+```
+
+Query keys are tested as values: the root key is namespaced and its children are stable (`queryKeys.test.ts`).
+
+### 6.4 Pattern 4 — components & contract tests
+
+Components mock `@arsi/container` — only the hooks they use (e.g. `useTranslation` returning `t: (key) => key`). `public.test.ts` guards the `public.ts` contract (slot/modal/event names, query key root, exported functions) — see `module-sample/public.test.ts`.
+
+### 6.5 When unit vs smoke?
+
+| Your change | Minimum verification |
+| --- | --- |
+| Service/hook/store/component logic | unit tests in the affected repo + `typecheck` + `lint` |
+| New module wiring (loader map, Dockerfile, config) | `check:dockerfile`, boot/discover tests, restart dev |
+| Base version / `manifest.json` | `check:base` (runs during the image build) |
+| Before release / dependency change | local image build + smoke test (`GUIDE §9`) |
+
+Tests run per repo: `cd web-modules && npm test`, `cd web-container && npm test`, `cd web-extension-client-a && npm test`.
+
+---
+
+## Chapter 7 — Troubleshooting
+
+Find the symptom, then follow the fix column. If an error is not listed here, check the relevant `CONTRACT` section and ask the team channel — do not guess.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts` | The module is in config but the loader map is stale. | `cd web-container && npm run gen:modules`, restart the dev server; check the package name `@arsi/module-<folder>`. |
+| `[routes] cannot override unknown route "<path>"` | The extension overrides a route of a module that is off/not registered. | Wrap the override in a `deps.routes.has` guard + `logger.warn` (`CONTRACT §12.4`); check the exact path. |
+| Dev config does not match (wrong client/modules/apiBase) | `.env` and `public/config.json` merged differently than expected. | Individual envs override the `public/config.json` base; `VITE_CONFIG_JSON` wins outright. Check the `[dev]`/`[dev-config]` lines, fix `.env`, restart. |
+| `[check:base] baseVersion manifest (x) != base image (y)` | The `manifest.json` pin differs from the built base tag. | Align `baseVersion` with the base tag, or build/use the right base tag (`GUIDE §9`). |
+| `npm ci` fails: `can only install packages when your package.json and package-lock.json are in sync` / `Missing: ... from lock file` | The lockfile did not change with it (fresh pull, new dependency/module). | Run `npm install` in the changed repo and commit `package-lock.json`; CI/Docker always uses `npm ci`. |
+| `[apiRegistry] service "x" is not registered` | The service is registered in an `init` that has not run, or the name is wrong. | Check the module order in config and the names in `register`/`get` (`CONTRACT §4.6`). |
+| `[slots] slot "x" already has a component` | The slot was filled twice or `init` re-ran without a guard. | Ensure the `initialized` guard; one slot is for one extension only. |
+| `init` runs twice in dev | React StrictMode. | The container already runs it `runOnce`; modules/extensions still need the `initialized` guard (`GUIDE §3`). |
+| Changes do not appear after switching clients | The `current-client` symlink is read at server start. | `readlink web-container/current-client`; re-run `CLIENT=<client> npm run link:client`, restart dev. |
+| Colors do not change with the theme | Raw hex or `dark:` utilities in a component. | Replace with tokens (`GUIDE §5.5`); run `tokens.test.ts`. |
+| Extension test: `Cannot read properties of null (reading 'useCallback')` | Two React copies (shared/Radix vs extension). | Alias `react`/`react-dom` in the extension's `vitest.config.ts` + `server.deps.inline` for `@arsi/shared` & `@radix-ui`. |
+| Docker build fails after adding a module/dependency | The module `package.json` is not COPYed or the lockfile is not committed. | Add the `COPY` line, commit the lockfile, run `cd web-container && npm run check:dockerfile`. |
+| `Invalid hook call` / `useNavigate() may be used only in the context of a <Router>` | Two React/React Router copies in the bundle. | Add the library to `resolve.dedupe` in `vite.config.ts` + `vitest.config.ts` (`CONTRACT §1.6`). |
+| New module does not appear in the menu | Not listed in `config.modules`/`VITE_MODULES`, or the loader map is stale. | List the module, `npm run gen:modules`, restart dev (`GUIDE §3`). |
+
+---
+
+## Chapter 8 — PR Checklist
+
+Use this before opening a PR. It is the developer's short version; the official checklist is `CONTRACT §20`.
+
+**General**
+
+- [ ] The PR description explains what changed, why, and how to verify.
+- [ ] `git status` is clean of `.env`, the `current-client` symlink, `node_modules`.
+- [ ] `typecheck`, `test`, `lint` pass in the changed repo.
+
+**Module**
+
+- [ ] Imports only from allowed layers; no imports from other modules.
+- [ ] No `deps` access at top level; all registrations inside `init(deps)`.
+- [ ] `init` is idempotent (`initialized` guard).
+- [ ] Services are factories, do not access `deps`, do not import React/React Query.
+- [ ] Service, slot, modal, event, and query key names are namespaced; routes unique + `meta.module`.
+- [ ] All UI text goes through i18n (`en` + `id`).
+- [ ] UI uses `@arsi/shared`; styling uses tokens (`GUIDE §5.5`).
+- [ ] New dependencies follow `CONTRACT §1.6` (react stays a peer, dedupe across trees).
+- [ ] `public.ts` updated; wiring (alias/loader map/Dockerfile/config) complete.
+- [ ] Tests added (service/query key/store/public API/component as needed).
+- [ ] `check:dockerfile` and `build` pass when wiring/build is touched.
+
+**Extension**
+
+- [ ] Only the default export `init(deps)`; all registrations inside it + idempotent.
+- [ ] Module imports only from `@arsi/module-<name>` (public API).
+- [ ] No core service override; new services named `<client>.<service>`.
+- [ ] Route overrides use the `routes.has` guard; `meta` is included.
+- [ ] i18n/styling overrides use tokens; only slots declared by the module are filled.
+- [ ] Does not listen to other extensions' events; does not make modules listen to extension events.
+- [ ] `manifest.json` updated (`client`, `baseVersion`, `modules`, `overrides`).
+- [ ] Override tests added; `typecheck`/`test`/`lint` pass.
+- [ ] `check:base` passes during the client image build (`GUIDE §9`).
+
+---
+
+## Chapter 9 — Local Image Build & Smoke Test
+
+The closest thing to production: build the base + client images on your laptop, run the container, check `/config.json`. No registry push. This is the summary; full steps are in `DEPLOYMENT-GUIDE` Tutorial A.
+
+### 9.1 Prerequisites
+
+- Docker is running (`docker version`).
+- Run from the base repo root (for the base) / the extension repo root (for the client).
+- Base and extension use the same `ORG` so the local tags find each other.
+
+### 9.2 Build the base image
+
+```bash
+cd arsi-web-base
+ORG=<dockerhub-org> VERIFY=1 PUSH=0 ./ci/build-base.sh
+```
+
+- `VERIFY=1` runs typecheck/test/lint + `check:dockerfile` + the default base build before the image is built (optional; `VERIFY=0` is faster).
+- Result: `docker.io/<org>/arsi-web-base:0.1.0` and `:0.1.0-builder` (version from `web-container/package.json`).
+- `PUSH=0` — the image stays local and is used by the next step.
+
+### 9.3 Build the client image
+
+```bash
+cd arsi-web-base/web-extension-client-a
+ORG=<dockerhub-org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
+```
+
+- `PULL=0` = do not pull the base from the registry; use the local image from §9.2.
+- Verification + `check:base` + the Vite build run inside the builder image.
+- Result: `docker.io/<org>/arsi-web-client-a:local`.
+
+### 9.4 Run & smoke test
+
+```bash
+docker run -d --name arsi-local -p 8080:80 \
+  -e VITE_MODULES=user-management,product-management,module-sample \
+  -e VITE_API_BASE=https://dummyjson.com \
+  docker.io/<org>/arsi-web-client-a:local
+
+sleep 2
+curl -s http://localhost:8080/config.json                        # client + modules + apiBase
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/  # 200
+docker logs arsi-local 2>&1 | grep Generated
+docker rm -f arsi-local
+```
+
+Checkpoint: `/config.json` carries the client/modules matching the env, the main page returns 200, and the entrypoint log is clean.
+
+### 9.5 Notes
+
+- **Negative `check:base` test**: temporarily set `manifest.json:baseVersion` to `9.9.9` → the build fails with a mismatch message; restore the value.
+- **Apple Silicon**: local images are `linux/arm64`; CI/production is usually `linux/amd64` — rely on CI or set the platform.
+- Tags, registry, CI, and rollback in detail: `DEPLOYMENT-GUIDE` Tutorial A/B/C.
+
+---
+
+## Chapter 10 — References & Living Examples
+
+### 10.1 Document map
+
+| Document | Contents | When to open |
+| --- | --- | --- |
+| `ARCHITECTURE.md` | mental model, boot, every mechanism (slot/route/service/event), deployment | when asking "why is it like this" |
+| `CONTRACT.md` | hard rules: layers, naming, testing, review | before writing code & during review |
+| `DEPLOYMENT-GUIDE.md` | Tutorial A (laptop), B (Ubuntu server), C (Azure CI/CD) | when building/releasing/deploying |
+| `GUIDE §1–§4` | learning path from zero to extensions | during onboarding |
+
+Key sections: `CONTRACT §1` (layers), `§4` (services), `§12.4` (override guard), `§17` (testing), `§20` (review checklist); `ARCHITECTURE §4–§8`.
+
+### 10.2 Living examples in code
+
+| Want to see | Open |
+| --- | --- |
+| Full CRUD module (list/detail/create/edit/delete, filter, pagination) | `web-modules/modules/product-management/` |
+| RHF + Zod + i18n validation | `product-management/schemas/productSchema.ts`, `components/ProductForm.tsx` |
+| Optimistic cache + rollback | `product-management/hooks/useProduct.ts` |
+| Modal with payload (delete confirmation) | `product-management/components/ProductDeleteDialog.tsx` |
+| Simple module + slot + every container dependency | `web-modules/modules/module-sample/` |
+| 3-level extension (slot → route override → service wrapper) | `web-extension-client-a/src/index.tsx`, `components/ClientASamplePanel.tsx`, `hooks/useClientASample.ts` |
+| Extension test (fake deps + idempotency) | `web-extension-client-a/src/__tests__/init.test.ts` |
+| Container registries + their tests | `web-container/src/{routes,slots,api,menu,events}/` |
+| Shared UI kit | `web-modules/shared/` |
+| Topbar global search → container event → module filter | `web-container/src/layout/GlobalSearch.tsx`, `web-container/src/events/containerEvents.ts`, `product-management/events/containerSearch.ts` |
+| Notification bell (module/extension → container) | `web-container/src/notifications/`, `user-management/components/SendNotificationButton.tsx`, `web-extension-client-a/src/components/AuditButton.tsx` |
+
+### 10.3 "Want to know X? Open where?"
+
+| Question | Short answer |
+| --- | --- |
+| Where are routes/menu registered? | Module `init(deps)` — `deps.routes.add`, `deps.menu.register` (`GUIDE §1`) |
+| Why does my module not boot? | Check `config.modules` + the loader map (`GUIDE §7`) |
+| How do I replace a module page? | Route override with a guard (`GUIDE §4`, `ARCHITECTURE §7`) |
+| How do I change a module service's logic? | Service wrapper in the extension (`GUIDE §4`) |
+| How do I add a new module? | `GUIDE §3` |
+| How do I release? | `DEPLOYMENT-GUIDE` Tutorial A/B/C |
+
+### 10.4 After this guide
+
+- Read `CONTRACT §20` before your first review.
+- Trace one real execution flow from `ARCHITECTURE §3.6`.
+- Follow your first release through `DEPLOYMENT-GUIDE` Tutorial A.

@@ -863,3 +863,334 @@ CLIENT=client-<x> npm run link:client && npm run dev
 ```
 
 Build & push image klien memakai `ci/build-client.sh` (base tidak dibangun ulang); langkah lengkapnya di `DEPLOYMENT-GUIDE.md` §3–§5.
+
+---
+
+## Bab 5 — Konvensi Cepat
+
+Buka bab ini saat menulis kode. Aturan lengkapnya ada di `CONTRACT §15`; di sini ringkasannya.
+
+### 5.1 Naming
+
+| Aspek | Format | Contoh |
+| --- | --- | --- |
+| Folder module | kebab-case | `order-management` |
+| File komponen | PascalCase | `OrderTable.tsx` |
+| File hook | `use<Name>.ts` | `useOrder.ts` |
+| File service | `service.<nama>.ts` | `service.order.ts` |
+| File store | `use<Name>Store.ts` | `useOrderStore.ts` |
+| Slot | `<module>.<slotName>` | `order-management.orderTableActions` |
+| Modal / Event | `<module>.<action>` / `<module>.<entity>.<action>` | `order-management.create`, `order-management.order.updated` |
+| Namespace i18n | `<module>` | `order-management` |
+| Nama service | `<module>` / `<client>.<service>` | `order`, `client-a.audit` |
+| Root query key | `[<module>, <entity>]` | `['order-management', 'order']` |
+| Persist key store | `module:<name>` / `container:<name>` | `module:order-management` |
+| File konfigurasi | `.cjs` | `aliases.cjs`, `tailwind.config.cjs` |
+| File berisi JSX | `.tsx` | `index.tsx`, `OrderListPage.tsx` |
+
+Nama package module **wajib** `@arsi/module-<folder>` — `gen:modules` langsung gagal bila tidak cocok.
+
+### 5.2 Struktur folder module
+
+Kerangka baku sebuah module (`GUIDE §3` menunjukkan cara membuatnya):
+
+```
+order-management/
+├── package.json      # name: @arsi/module-order-management
+├── index.tsx         # init(deps) — semua registrasi
+├── public.ts         # satu-satunya pintu untuk extension
+├── types.ts          # tipe domain
+├── slots.ts          # extension point UI
+├── events.ts         # komunikasi lintas module
+├── modals.ts         # modal yang bisa dibuka
+├── queryKeys.ts      # factory query key
+├── services/         # factory function, tanpa deps
+├── hooks/            # service + React Query
+├── store/            # Zustand, persist key module:<name>
+├── components/       # komponen UI modul
+├── pages/            # halaman route
+└── i18n/{en,id}.json # namespace = nama folder
+```
+
+Extension memakai struktur serupa, ditambah `overrides/<module>/` untuk halaman pengganti (`GUIDE §4`).
+
+### 5.3 Import: salah → benar
+
+| ✗ | ✓ |
+| --- | --- |
+| `import axios from 'axios'` di service/hook | hanya di `index.tsx` saat register service |
+| `import { useQuery } from '@tanstack/react-query'` | `import { useQuery } from '@arsi/container'` |
+| `import { toast } from 'sonner'` | `useToast()` / `deps.toast` |
+| `import i18next from 'i18next'` | `useTranslation()` / `deps.i18n` |
+| `import { Button } from '@arsi/shared/components/ui/button'` | `import { Button } from '@arsi/shared'` |
+| `import { X } from '@arsi/module-user-management/internal'` (extension) | `import { X } from '@arsi/module-user-management'` |
+| `import.meta.env.VITE_*` di module/extension | `deps.config` / `useConfig()` |
+| Membuat `QueryClient` sendiri | `useQueryClient()` / `deps.queryClient` |
+
+ESLint menegakkan sebagian besar aturan ini (`no-restricted-imports` per repo).
+
+### 5.4 i18n
+
+- Namespace module = nama folder (`order-management`); namespace extension = id klien (`client-a`).
+- Setiap teks UI lewat `t()` — jangan hardcode string.
+- `i18n/en.json` dan `i18n/id.json` **wajib** sama-sama ada; paritas ID/EN juga berlaku di aplikasi.
+- Kunci deskriptif (`menu.orders`, `empty`), bukan `text1`.
+- Extension boleh menimpa label module lewat `addResourceBundle(..., overwrite=true)` (`GUIDE §4`); aturan lengkap `CONTRACT §6`.
+
+### 5.5 Styling Tailwind
+
+Brand: **ARSI Purple `#551AB9`**. Token lengkap: `CONTRACT §10.4`.
+
+| Aturan | Detail |
+| --- | --- |
+| Warna | **Wajib token** (`bg-primary`, `text-success-strong`); hex mentah / warna palette Tailwind langsung dilarang. |
+| Hover/selected | `hover:bg-primary-hover` (tombol), `bg-accent` (surface hover/selected). |
+| Status | Pola tint: `bg-success/10 text-success-strong border-success/20` (idem `warning`/`info`/`destructive`). |
+| Dark mode | Jangan pakai `dark:` — token yang flip otomatis (`web-container/src/styles/globals.css`). |
+| Font | Plus Jakarta Sans self-host; jangan tambah `<link>` Google Fonts. |
+| Token baru | Ubah `globals.css` + `tailwind.preset.cjs`; test `web-container/src/styles/tokens.test.ts` wajib lulus. |
+| Container | Self-contained: container dilarang import `@arsi/shared` (ESLint). |
+
+### 5.6 Commit & branch
+
+| Hal | Aturan |
+| --- | --- |
+| Branch | `feat/<ringkas>` atau `fix/<ringkas>`, dari branch utama repo yang tepat |
+| Commit | `feat(<scope>): ...` / `fix(<scope>): ...`; `scope` = module atau klien |
+| Isi commit | satu tujuan — jangan campur refactor dengan fitur |
+| Repo | override klien → repo extension; module/shared/container → repo base |
+
+---
+
+## Bab 6 — Testing Playbook
+
+Kewajiban test ada di `CONTRACT §17`: module **wajib** punya test untuk public API-nya, extension **wajib** punya test untuk override. Bab ini pola yang sudah terbukti di repo sample.
+
+### 6.1 Pola 1 — fake `deps` + `vi.resetModules()`
+
+Test `init(deps)` tidak memakai container sungguhan. Buat `deps` palsu berisi `vi.fn()` untuk registry yang dipakai, lalu import ulang modulnya agar guard `initialized` segar per test:
+
+```ts
+async function loadInit() {
+  vi.resetModules();                 // guard `initialized` kembali false
+  const mod = await import('../index');
+  return mod.default;
+}
+
+const { deps, apiRegistry, slots, routes } = createFakeDeps(); // deps palsu + vi.fn()
+await (await loadInit())(deps);
+
+expect(apiRegistry.register).toHaveBeenCalledWith('client-a.audit', expect.anything());
+expect(slots.register).toHaveBeenCalledWith(userSlots.userTableActions, expect.anything());
+expect(routes.override).toHaveBeenCalledWith('/users/:id', expect.objectContaining({ element: expect.anything() }));
+```
+
+Contoh hidup: `web-extension-client-a/src/__tests__/init.test.ts` dan `web-modules/modules/module-sample/index.test.ts`. Selalu tambah test idempotensi: panggil `init` dua kali, pastikan registrasi tidak berulang (StrictMode).
+
+### 6.2 Pola 2 — test registry container
+
+Perilaku registry diuji langsung di `web-container/src/` dengan memanggil factory-nya tanpa React:
+
+| Registry | File test | Yang dijaga |
+| --- | --- | --- |
+| Route | `routes/routeRegistry.test.ts` | duplicate `add` → throw; `override` path asing → throw |
+| Slot | `slots/slotRegistry.test.ts` | slot terisi dua kali → throw |
+| Service | `api/apiRegistry.test.ts` | `get` nama tak dikenal → throw |
+| Menu | `menu/menuRegistry.test.ts` | item terurut & unik |
+| Event | `events/eventBus.test.ts` | `on`/`emit`/`off` |
+
+Test-test ini menjaga pesan error yang Anda temui di `GUIDE §7`.
+
+### 6.3 Pola 3 — service & query key
+
+Service adalah factory yang menerima `AxiosInstance`, jadi test-nya cukup mock axios:
+
+```ts
+const api = { get: vi.fn(), post: vi.fn() };
+const service = createOrderService(api as unknown as AxiosInstance);
+await service.list({ limit: 5 });
+expect(api.get).toHaveBeenCalledWith('/orders', { params: { limit: 5, skip: 0 } });
+```
+
+Query key diuji sebagai nilai: root key ber-namespace dan turunannya stabil (`queryKeys.test.ts`).
+
+### 6.4 Pola 4 — komponen & contract test
+
+Komponen di-mock `@arsi/container` — hanya hook yang dipakai (mis. `useTranslation` mengembalikan `t: (key) => key`). `public.test.ts` menjaga kontrak `public.ts` (nama slot/modal/event, query key root, fungsi yang diekspor) — lihat `module-sample/public.test.ts`.
+
+### 6.5 Kapan unit vs smoke?
+
+| Perubahan Anda | Verifikasi minimal |
+| --- | --- |
+| Logika service/hook/store/komponen | unit test repo terkait + `typecheck` + `lint` |
+| Wiring module baru (loader map, Dockerfile, config) | `check:dockerfile`, test boot/discover, restart dev |
+| Versi base / `manifest.json` | `check:base` (berjalan saat build image) |
+| Sebelum rilis / perubahan dependency | build image lokal + smoke test (`GUIDE §9`) |
+
+Semua test jalan per repo: `cd web-modules && npm test`, `cd web-container && npm test`, `cd web-extension-client-a && npm test`.
+
+---
+
+## Bab 7 — Troubleshooting
+
+Cari gejalanya, lalu ikuti kolom solusi. Bila pesan error tidak ada di sini, cek `CONTRACT` terkait dan tanyakan di kanal tim — jangan menebak.
+
+| Gejala | Penyebab | Solusi |
+| --- | --- | --- |
+| `[bootstrap] module "x" is declared in config.modules but is not wired in moduleLoaders.generated.ts` | Module terdaftar di config tapi loader map stale. | `cd web-container && npm run gen:modules`, restart dev server; cek nama package `@arsi/module-<folder>`. |
+| `[routes] cannot override unknown route "<path>"` | Extension meng-override route module yang tidak aktif/belum terdaftar. | Bungkus override dengan guard `deps.routes.has` + `logger.warn` (`CONTRACT §12.4`); cek path persis. |
+| Config dev tidak sesuai (client/modules/apiBase salah) | `.env` dan `public/config.json` tertimpa tidak seperti dugaan. | Env individual menimpa base `public/config.json`; `VITE_CONFIG_JSON` menang penuh. Periksa baris `[dev]`/`[dev-config]`, perbaiki `.env`, restart. |
+| `[check:base] baseVersion manifest (x) != base image (y)` | Pin `manifest.json` tidak sama dengan tag base yang dibangun. | Samakan `baseVersion` dengan tag base, atau bangun/pakai tag base yang benar (`GUIDE §9`). |
+| `npm ci` gagal: `can only install packages when your package.json and package-lock.json are in sync` / `Missing: ... from lock file` | Lockfile tidak ikut berubah (pull baru, dependency/module baru). | Jalankan `npm install` di repo yang berubah, commit `package-lock.json`; di CI/Docker selalu `npm ci`. |
+| `[apiRegistry] service "x" is not registered` | Service didaftarkan di `init` yang belum jalan, atau salah nama. | Cek urutan modul di config dan nama di `register`/`get` (`CONTRACT §4.6`). |
+| `[slots] slot "x" already has a component` | Slot diisi dua kali atau `init` berjalan ulang tanpa guard. | Pastikan guard `initialized`; satu slot hanya untuk satu extension. |
+| `init` jalan dua kali saat dev | React StrictMode. | Container sudah `runOnce`; module/extension tetap wajib punya guard `initialized` (`GUIDE §3`). |
+| Perubahan tidak muncul setelah ganti client | Symlink `current-client` dibaca saat server start. | `readlink web-container/current-client`; ulangi `CLIENT=<client> npm run link:client`, restart dev. |
+| Warna tidak berubah saat ganti tema | Hex mentah atau utility `dark:` di komponen. | Ganti dengan token (`GUIDE §5.5`); jalankan `tokens.test.ts`. |
+| Test extension: `Cannot read properties of null (reading 'useCallback')` | Dua salinan React (shared/Radix vs extension). | Alias `react`/`react-dom` di `vitest.config.ts` extension + `server.deps.inline` untuk `@arsi/shared` & `@radix-ui`. |
+| Docker build gagal setelah tambah module/dependency | `package.json` module belum di-COPY atau lockfile belum di-commit. | Tambah baris `COPY`, commit lockfile, jalankan `cd web-container && npm run check:dockerfile`. |
+| `Invalid hook call` / `useNavigate() may be used only in the context of a <Router>` | Dua salinan React/React Router di bundle. | Tambahkan library ke `resolve.dedupe` di `vite.config.ts` + `vitest.config.ts` (`CONTRACT §1.6`). |
+| Module baru tidak muncul di menu | Tidak terdaftar di `config.modules`/`VITE_MODULES` atau loader map stale. | Daftarkan modulnya, `npm run gen:modules`, restart dev (`GUIDE §3`). |
+
+---
+
+## Bab 8 — Checklist PR
+
+Pakai sebelum membuka PR. Ini versi ringkas untuk developer; checklist resmi ada di `CONTRACT §20`.
+
+**Umum**
+
+- [ ] Deskripsi PR menjelaskan apa yang berubah, kenapa, dan cara memverifikasi.
+- [ ] `git status` bersih dari `.env`, symlink `current-client`, `node_modules`.
+- [ ] `typecheck`, `test`, `lint` lulus di repo yang diubah.
+
+**Module**
+
+- [ ] Import hanya dari layer yang diizinkan; tidak mengimpor module lain.
+- [ ] Tidak ada akses `deps` di top-level; semua registrasi di `init(deps)`.
+- [ ] `init` idempoten (guard `initialized`).
+- [ ] Service berupa factory, tidak akses `deps`, tidak impor React/React Query.
+- [ ] Nama service, slot, modal, event, dan query key ber-namespace; route unik + `meta.module`.
+- [ ] Semua teks UI lewat i18n (`en` + `id`).
+- [ ] UI memakai `@arsi/shared`; styling memakai token (`GUIDE §5.5`).
+- [ ] Dependency baru mengikuti `CONTRACT §1.6` (react tetap peer, dedupe lintas tree).
+- [ ] `public.ts` diperbarui; wiring (alias/loader map/Dockerfile/config) lengkap.
+- [ ] Test ditambahkan (service/query key/store/public API/komponen sesuai perubahan).
+- [ ] `check:dockerfile` dan `build` lulus bila menyentuh wiring/build.
+
+**Extension**
+
+- [ ] Hanya default export `init(deps)`; semua registrasi di dalamnya + idempoten.
+- [ ] Import module hanya dari `@arsi/module-<name>` (public API).
+- [ ] Tidak override service core; service baru bernama `<client>.<service>`.
+- [ ] Override route memakai guard `routes.has`; `meta` disertakan.
+- [ ] Override i18n/styling memakai token; slot hanya yang dideklarasikan module.
+- [ ] Tidak listen event extension lain; tidak membuat module listen event extension.
+- [ ] `manifest.json` diperbarui (`client`, `baseVersion`, `modules`, `overrides`).
+- [ ] Test override ditambahkan; `typecheck`/`test`/`lint` lulus.
+- [ ] `check:base` lulus saat build image client (`GUIDE §9`).
+
+---
+
+## Bab 9 — Build Image Lokal & Smoke Test
+
+Verifikasi paling dekat ke produksi: bangun image base + client di laptop, jalankan container, cek `/config.json`. Tanpa push ke registry. Ini ringkasannya; langkah lengkap ada di `DEPLOYMENT-GUIDE` Tutorial A.
+
+### 9.1 Prasyarat
+
+- Docker berjalan (`docker version`).
+- Jalankan dari root repo base (untuk base) / root repo extension (untuk client).
+- Base dan extension memakai `ORG` yang sama agar tag lokal saling ketemu.
+
+### 9.2 Build image base
+
+```bash
+cd arsi-web-base
+ORG=<org-dockerhub> VERIFY=1 PUSH=0 ./ci/build-base.sh
+```
+
+- `VERIFY=1` menjalankan typecheck/test/lint + `check:dockerfile` + build base default sebelum image dibuat (opsional; `VERIFY=0` lebih cepat).
+- Hasil: `docker.io/<org>/arsi-web-base:0.1.0` dan `:0.1.0-builder` (versi dari `web-container/package.json`).
+- `PUSH=0` — image tetap lokal, dipakai langkah berikutnya.
+
+### 9.3 Build image client
+
+```bash
+cd arsi-web-base/web-extension-client-a
+ORG=<org-dockerhub> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
+```
+
+- `PULL=0` = jangan tarik base dari registry; pakai image lokal §9.2.
+- Verifikasi + `check:base` + build Vite berjalan di dalam builder image.
+- Hasil: `docker.io/<org>/arsi-web-client-a:local`.
+
+### 9.4 Jalankan & smoke test
+
+```bash
+docker run -d --name arsi-local -p 8080:80 \
+  -e VITE_MODULES=user-management,product-management,module-sample \
+  -e VITE_API_BASE=https://dummyjson.com \
+  docker.io/<org>/arsi-web-client-a:local
+
+sleep 2
+curl -s http://localhost:8080/config.json                        # client + modules + apiBase
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/  # 200
+docker logs arsi-local 2>&1 | grep Generated
+docker rm -f arsi-local
+```
+
+Checkpoint: `/config.json` memuat client/modules sesuai env, halaman utama 200, dan log entrypoint bersih.
+
+### 9.5 Catatan
+
+- **Negative test `check:base`**: ubah sementara `manifest.json:baseVersion` ke `9.9.9` → build gagal dengan pesan mismatch; kembalikan nilainya.
+- **Apple Silicon**: image lokal `linux/arm64`; CI/produksi umumnya `linux/amd64` — andalkan CI atau set platform.
+- Detail tag, registry, CI, dan rollback: `DEPLOYMENT-GUIDE` Tutorial A/B/C.
+
+---
+
+## Bab 10 — Referensi & Contoh Hidup
+
+### 10.1 Peta dokumen
+
+| Dokumen | Isi | Kapan dibuka |
+| --- | --- | --- |
+| `ARCHITECTURE.md` | model mental, boot, tiap mekanisme (slot/route/service/event), deployment | saat bertanya "mengapa begini" |
+| `CONTRACT.md` | aturan keras: layer, naming, testing, review | sebelum menulis kode & saat review |
+| `DEPLOYMENT-GUIDE.md` | Tutorial A (laptop), B (Ubuntu server), C (Azure CI/CD) | saat build/rilis/deploy |
+| `GUIDE §1–§4` | jalur belajar dari nol sampai extension | saat onboarding |
+
+Rujukan section penting: `CONTRACT §1` (layer), `§4` (service), `§12.4` (guard override), `§17` (testing), `§20` (review checklist); `ARCHITECTURE §4–§8`.
+
+### 10.2 Contoh hidup di kode
+
+| Ingin melihat | Buka |
+| --- | --- |
+| Module CRUD lengkap (list/detail/create/edit/delete, filter, pagination) | `web-modules/modules/product-management/` |
+| Form RHF + Zod + validasi i18n | `product-management/schemas/productSchema.ts`, `components/ProductForm.tsx` |
+| Optimistic cache + rollback | `product-management/hooks/useProduct.ts` |
+| Modal dengan payload (konfirmasi hapus) | `product-management/components/ProductDeleteDialog.tsx` |
+| Module sederhana + slot + semua dependency container | `web-modules/modules/module-sample/` |
+| Extension 3 tingkat (slot → override route → service wrapper) | `web-extension-client-a/src/index.tsx`, `components/ClientASamplePanel.tsx`, `hooks/useClientASample.ts` |
+| Test extension (fake deps + idempotensi) | `web-extension-client-a/src/__tests__/init.test.ts` |
+| Registry container + test-nya | `web-container/src/{routes,slots,api,menu,events}/` |
+| Shared UI kit | `web-modules/shared/` |
+| Global search Topbar → event container → filter module | `web-container/src/layout/GlobalSearch.tsx`, `web-container/src/events/containerEvents.ts`, `product-management/events/containerSearch.ts` |
+| Notifikasi bell (module/extension → container) | `web-container/src/notifications/`, `user-management/components/SendNotificationButton.tsx`, `web-extension-client-a/src/components/AuditButton.tsx` |
+
+### 10.3 "Mau tahu X, buka mana?"
+
+| Pertanyaan | Jawaban singkat |
+| --- | --- |
+| Di mana route/menu didaftarkan? | `init(deps)` module — `deps.routes.add`, `deps.menu.register` (`GUIDE §1`) |
+| Kenapa module saya tidak boot? | Cek `config.modules` + loader map (`GUIDE §7`) |
+| Bagaimana mengganti halaman module? | Route override dengan guard (`GUIDE §4`, `ARCHITECTURE §7`) |
+| Bagaimana mengubah logic service module? | Service wrapper di extension (`GUIDE §4`) |
+| Bagaimana menambah modul baru? | `GUIDE §3` |
+| Bagaimana merilis? | `DEPLOYMENT-GUIDE` Tutorial A/B/C |
+
+### 10.4 Setelah guide ini
+
+- Baca `CONTRACT §20` sebelum review pertama Anda.
+- Telusuri satu execution flow nyata dari `ARCHITECTURE §3.6`.
+- Ikuti rilis pertama Anda lewat `DEPLOYMENT-GUIDE` Tutorial A.
