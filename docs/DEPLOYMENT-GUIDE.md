@@ -1,445 +1,249 @@
-# Deployment Guide — DevOps Engineer
+# Panduan Deployment — DevOps Engineer
 
-**Version**: 0.2.0
-**Audience**: DevOps / platform engineer
-**Terkait**: `ARCHITECTURE.md` §16 (Build & Deployment), §17 (CI/CD); `CONTRACT.md`; `DEVELOPER-GUIDE.md`; panduan end-to-end: `ZERO-TO-DEPLOY-GUIDE.md`
-**Target deployment saat ini**: **Docker** — base dibangun sekali menjadi image `arsi-web-base`, lalu tiap extension membangun satu image client `FROM` base image tersebut. Config di-inject saat container start.
+Panduan ini ditujukan untuk **DevOps / platform engineer**: membangun image base dan image client, mendorongnya ke registry, menjalankannya di server, lalu merawatnya saat berjalan. Semua perintah dirancang copy-paste; istilah dijelaskan secukupnya. Konsep model deploy ada di `ARCHITECTURE §8`, aturan keras di `CONTRACT`, dan alur development di `DEVELOPER-GUIDE`. Padanan bahasa Inggris dokumen ini: `DEPLOYMENT-GUIDE.en.md`.
 
-> English version: `DEPLOYMENT-GUIDE.en.md`.
+Konvensi: `<...>` adalah placeholder yang diganti; perintah ditulis untuk bash/zsh, dan referensi image memakai prefix `docker.io` (registry default).
 
----
+### Peta tutorial
 
-## 1. Overview
+| Bagian | Target | Isi | Registry |
+| --- | --- | --- | --- |
+| **Tutorial A** — Deploy di Laptop (Local) | laptop developer | build base + client image lokal, jalankan, smoke test, cleanup | tanpa push/pull |
+| **Tutorial B** — Deploy di Ubuntu Server | satu VM Ubuntu | Docker Engine + Compose, reverse proxy + TLS, update & rollback | pull dari registry |
+| **Tutorial C** — Deploy via Azure CI/CD | Azure Pipelines + VM | pipeline build/push, deploy via SSH, approval | push + pull |
+| **Operasi & Referensi** | — | environments/promotion, rollback, security, referensi env, troubleshooting, cheat sheet | — |
 
-Base dibangun sekali; extension dibangun di atasnya tanpa menyentuh repo base.
+### Prasyarat
 
-```
-repo base (arsi-web-base)                       image base
-┌───────────────────────────────┐  build-base   ┌────────────────────────────────────┐
-│ Dockerfile (multi-target)     │ ────────────► │ <org>/arsi-web-base:<ver>-builder  │
-│  web-container/               │               │  node:22-alpine + source           │
-│  web-modules/                 │               │  + node_modules + /app/BASE_VERSION│
-│  web-extension-default/       │               ├────────────────────────────────────┤
-│  web-extension-template/      │ ────────────► │ <org>/arsi-web-base:<ver>          │
-│  ci/build-base.sh             │               │  nginx:1.27-alpine + SPA base      │
-└───────────────────────────────┘               └─────────────────┬──────────────────┘
-                                                                  │ FROM builder & runtime
-repo client (arsi-web-client-<x>)                                 ▼
-┌───────────────────────────────┐  build-client ┌────────────────────────────────────┐
-│ Dockerfile                    │ ────────────► │ <org>/arsi-web-<client>:<buildId>  │
-│ manifest.json (baseVersion)   │               │  nginx + dist client (1 image)     │
-│ ci/build-client.sh + src/     │               │  ENV VITE_CLIENT=<client>          │
-└───────────────────────────────┘               └────────────────────────────────────┘
-```
-
-Prinsip:
-
-- **Base sekali, banyak extension** — base dibuild sekali (2 image); tiap extension membangun image client sendiri dari base image, tanpa checkout/rebuild `web-container` + `web-modules`.
-- **Satu image, banyak environment** — staging/production memakai image client yang sama; perbedaan hanya env var saat start.
-- **Config bukan bagian dari image** — `entrypoint.sh` (dibawa base runtime) menulis `/config.json` di dalam container dari env (`VITE_*`). Tidak perlu rebuild untuk ganti API base/modul.
-- **Tidak ada secret di image** — image hanya berisi aset publik + config publik. Secret (Docker Hub, TLS) di luar image.
-- **Versi base dipin exact** — `manifest.json.baseVersion` di repo extension harus sama persis dengan tag base; mismatch = build gagal (`check:base`).
-
----
-
-## 2. Prerequisites
-
-| Tool | Versi | Catatan |
+| Kebutuhan | Versi | Catatan |
 | --- | --- | --- |
-| Node.js | 22.x | image `node:22-alpine` (v22.23.3); jsdom@30/undici@8 butuh ≥22.22, Node 20 EOL April 2026 |
-| npm | 10+ | dipakai untuk `npm ci` di repo base (container, web-modules, extension default) dan repo extension |
-| Docker | 20+ | build multi-stage/multi-target; BuildKit tidak wajib |
-| Registry | — | Docker Hub (`docker.io/<org>`); `docker login` sebelum push; base builder sebaiknya private |
-| (Opsional) reverse proxy/TLS | — | nginx/Traefik/ALB di host — TLS tidak ditangani container |
+| Docker Engine | 20+ | build multi-stage/multi-target; BuildKit tidak wajib |
+| Docker Compose plugin | v2 (`docker compose`) | Tutorial B–C; Tutorial A tidak memakai Compose |
+| Git | 2.x | default `SHA`/`BUILD_ID` diambil dari `git rev-parse --short HEAD` |
+| Node.js + npm | 22.x + 10+ | hanya untuk `VERIFY=1` di lokal; di dalam Docker dipakai `node:22-alpine` |
+| Akun Docker Hub | — | Tutorial B–C (push/pull); Tutorial A berjalan penuh lokal tanpa login |
+| Reverse proxy + TLS | nginx/Traefik/ALB | disiapkan di host; container hanya melayani HTTP:80 |
+
+### Artefak yang dibangun
+
+| Artefak | Isi | Tag | Referensi image |
+| --- | --- | --- | --- |
+| Base builder | `node:22-alpine` + source base + `node_modules` + `/app/BASE_VERSION` | `<versi>-builder`, `<sha>-builder` | `<registry>/<org>/arsi-web-base` |
+| Base runtime | `nginx:1.27-alpine` + dist base (client `base`) + `entrypoint.sh` + `nginx.conf` | `<versi>`, `<sha>` | idem |
+| Client image | base runtime + dist klien, `ENV VITE_CLIENT=<client>` | `<buildId>` | `<registry>/<org>/arsi-web-<client>` |
+
+- `<versi>` = `web-container/package.json:version` (saat ini `0.1.0`); `<sha>` = short git SHA saat build; `<buildId>` = id build bebas (CI build ID / short SHA; Tutorial A memakai `local`).
+- `/config.json` **tidak** ada di image — digenerate `entrypoint.sh` saat container start (§1.3).
 
 ---
 
-## 3. Repo Layout & Build
+## 1. Konsep & Artefak
 
-### 3.1 Layout repo base
+Model deploy mengikuti dua jenis repo (`ARCHITECTURE §2`): platform team membangun **image base** sekali per versi, lalu tiap klien membangun **image client** `FROM` image base tersebut. Repo klien **tidak** men-checkout repo base — source base datang dari builder image. Penjelasan mendalam: `ARCHITECTURE §8`.
 
-```
-arsi-web-base/
-├── Dockerfile                  # multi-target: builder | base-app | runtime
-├── .dockerignore
-├── ci/
-│   └── build-base.sh
-├── web-container/
-├── web-modules/
-├── web-extension-default/      # extension default (client: "base")
-└── web-extension-template/     # template untuk repo client baru
-```
+Empat prinsip yang menentukan cara kerja operasionalnya:
 
-### 3.2 Layout repo client
+- **Base sekali, banyak extension** — satu build base menghasilkan dua image (builder + runtime); setiap extension membangun image client sendiri tanpa rebuild `web-container`/`web-modules`.
+- **Satu image, banyak environment** — staging dan produksi memakai image client yang sama; perbedaannya hanya env saat start.
+- **Config bukan bagian image** — `entrypoint.sh` (dibawa base runtime) menulis `/config.json` dari env; ganti API base/modul cukup dengan recreate container, tanpa rebuild.
+- **Tidak ada secret di image** — image hanya berisi aset dan config publik; secret (token registry, TLS) ada di luar image.
 
-```
-arsi-web-client-<x>/            # repo client (checkout: web-extension-client-<x>)
-├── Dockerfile                  # FROM base <ver>-builder → FROM base <ver>
-├── .dockerignore
-├── ci/
-│   └── build-client.sh
-├── manifest.json               # client + baseVersion (pin exact ke tag base)
-├── package.json + package-lock.json
-└── src/
-```
+### 1.1 Tag
 
-Catatan: repo extension **tidak** memuat `web-container`/`web-modules` — keduanya tersedia dari base builder image (`/app/web-container`, `/app/web-modules`). Folder extension di builder image selalu `/app/extension`, di-symlink sebagai `current-client` saat build.
+| Objek | Tag | Sumber |
+| --- | --- | --- |
+| Base | `<versi>`, `<versi>-builder` | `web-container/package.json:version` |
+| Base (immutable) | `<sha>`, `<sha>-builder` | `git rev-parse --short HEAD` |
+| Client | `<buildId>` | argumen `BUILD_ID` (CI build ID / short SHA) |
 
-### 3.3 Build lokal (tanpa Docker)
+Promosi = **retag/pull image yang sama**, bukan rebuild; rollback = deploy tag sebelumnya. Hindari tag `latest` di produksi.
 
-Build base default (`client: "base"`):
+### 1.2 Pin `baseVersion`
 
-```bash
-cd web-container
-npm run link:base     # symlink current-client -> ../web-extension-default
-CLIENT=base npm run build:client    # pre-hook otomatis: gen:modules
-# output: web-container/dist/base/
+`manifest.json:baseVersion` di repo klien mengunci exact tag base yang dipakai. Saat build client, `check:base` membandingkan nilai manifest dengan `/app/BASE_VERSION` di builder image; mismatch menghentikan build dengan pesan:
+
+```text
+[check:base] baseVersion manifest (x) != base image (y)
 ```
 
-Dev memakai script generik (client dari symlink/`.env`):
+Adopsi base baru = PR yang menaikkan `baseVersion`, lalu image client dibangun ulang terhadap tag base baru. Klien lain tidak terpengaruh sampai mereka menaikkan `baseVersion` masing-masing.
 
-```bash
-cd web-container
-CLIENT=client-a npm run link:client  # symlink current-client -> ../web-extension-client-a
-npm run dev                          # client dari symlink; /config.json digenerate dari env
-```
+### 1.3 Runtime config
 
-Catatan:
-
-- `build:client` / `build` menjalankan **pre-hook** `gen:modules` (loader map di-generate dari `web-modules/modules/*/package.json`).
-- Jangan memanggil `npx vite build` langsung — pre-hook tidak jalan dan loader map bisa stale.
-- Guard Docker: `cd web-container && npm run check:dockerfile` memastikan **semua** `package.json` (termasuk `web-extension-default`) sudah di-COPY di `Dockerfile` root repo base.
-
-### 3.4 Urutan verifikasi (wajib di CI)
-
-Repo base:
-
-```bash
-cd web-modules          && npm ci && npm run typecheck && npm test && npm run lint
-cd ../web-extension-default && npm ci && npm run typecheck && npm run lint
-cd ../web-container     && npm run link:base && npm ci
-npm run typecheck && npm test && npm run test:entrypoint && npm run check:dockerfile && CLIENT=base npm run build:client
-```
-
-Repo extension:
-
-```bash
-cd web-extension-client-a && npm ci && npm run typecheck && npm run test --if-present && npm run lint
-```
-
-`ci/build-base.sh` dengan `VERIFY=1` menjalankan urutan repo base di atas. Verifikasi repo extension juga berjalan **di dalam builder image** saat `ci/build-client.sh`.
-
----
-
-## 4. Docker Build
-
-### 4.1 Build base
-
-Dari root repo base:
-
-```bash
-ORG=<dockerhub-org> VERIFY=1 PUSH=1 ./ci/build-base.sh
-```
+`entrypoint.sh` membaca env berikut saat container start, lalu menulisnya ke `/config.json`:
 
 | Env | Default | Fungsi |
 | --- | --- | --- |
-| `REGISTRY` | `docker.io` | Registry Docker Hub |
-| `ORG` | — (wajib) | Namespace/org Docker Hub |
-| `BASE_VERSION` | `web-container/package.json:version` (sekarang `0.1.0`) | Tag base `<ver>` dan `<ver>-builder` |
-| `SHA` | `git rev-parse --short HEAD` | Tag immutable `<sha>` dan `<sha>-builder` |
-| `VERIFY` | `0` | `1` = jalankan typecheck/test/lint + `check:dockerfile` + build base default sebelum build image |
-| `PUSH` | `0` | `1` = push semua tag ke registry |
+| `VITE_CLIENT` | `base` | nilai `client` di `/config.json`; image client menyetel `ENV VITE_CLIENT=<client>` |
+| `VITE_MODULES` | `user-management` | CSV modul yang **di-init** saat runtime, mis. `user-management,product-management,module-sample` |
+| `VITE_API_BASE` | `https://dummyjson.com` | base URL API untuk `deps.api` dan service modul |
+| `VITE_ENABLE_AUDIT_LIVE` | `true` | feature flag (`featureFlags.enableAuditLive`) |
+| `VITE_CONFIG_JSON` | — | override penuh `/config.json` (JSON object); bila diisi, env individual diabaikan |
 
-Dockerfile root (`Dockerfile`) multi-target:
+- Lokasi file bisa dioverride lewat `CONFIG_FILE` (default `/usr/share/nginx/html/config.json`).
+- `VITE_CONFIG_JSON` menang mutlak dan nilainya **wajib** object JSON (diawali `{`, diakhiri `}`); kalau tidak, container gagal start dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`.
+- Semua modul di `web-modules/modules/` selalu ter-bundle; `VITE_MODULES` hanya memilih yang aktif. Nama modul harus sama dengan nama folder — kalau tidak, app gagal boot dengan `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
+- nginx mengirim `/config.json` dengan `Cache-Control: no-store`, melayani `/assets/` sebagai immutable 1 tahun, dan fallback SPA memakai `try_files $uri $uri/ /index.html`.
+- Aplikasi membaca `/config.json` dengan `cache: 'no-store'`; verifikasi header cache ada di A.4.
 
-| Stage | Isi |
-| --- | --- |
-| `builder` (`node:22-alpine`) | COPY `package.json` + lockfile per tree (web-container, web-modules, shared, tiap modul, web-extension-default) → `npm ci` per tree → COPY source → tulis `/app/BASE_VERSION` |
-| `base-app` | `FROM builder`; symlink `current-client -> ../web-extension-default`; `CLIENT=base npm run build:client` |
-| `runtime` (`nginx:1.27-alpine`) | COPY `dist/base` → `/usr/share/nginx/html`; COPY `nginx.conf`; COPY `entrypoint.sh`; `LABEL` versi; `EXPOSE 80` |
+### 1.4 Alur deploy
 
-- `COPY package.json` tiap modul **eksplisit**. Menambah modul baru = menambah baris COPY + jalankan `npm run check:dockerfile` (kalau lupa, guard gagal).
-- Runtime base dapat di-deploy standalone: extension default `web-extension-default` (client `base`).
-- Hasil: tag `<ver>-builder`, `<sha>-builder`, `<ver>`, `<sha>`.
-
-### 4.2 Build extension
-
-Dari root repo extension:
-
-```bash
-ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
+```mermaid
+flowchart LR
+    subgraph Base repo
+        D[Dockerfile multi-target] --> BIMG[builder image]
+        D --> RIMG[runtime image]
+    end
+    subgraph Client repo
+        CD[Dockerfile client] -->|FROM builder| CB[build + verify + build:client]
+        CB -->|FROM runtime| CIMG[client image]
+    end
+    BIMG --> CB
+    RIMG --> CIMG
+    CIMG --> VM[VM / runtime: env → /config.json]
 ```
 
-| Env | Default | Fungsi |
-| --- | --- | --- |
-| `REGISTRY` | `docker.io` | Registry Docker Hub |
-| `ORG` | — (wajib) | Namespace/org Docker Hub |
-| `BASE_VERSION` | `manifest.json:baseVersion` | Tag base yang dipakai |
-| `CLIENT_NAME` | `manifest.json:client` | Nama image client (`arsi-web-<client>`) |
-| `BUILD_ID` | `git rev-parse --short HEAD` | Tag image client |
-| `PULL` | `1` | Pull base builder + runtime sebelum build |
-| `PUSH` | `0` | `1` = push image client |
-| `BASE_BUILDER_IMAGE` / `BASE_RUNTIME_IMAGE` | `<registry>/<org>/arsi-web-base:<ver>[-builder]` | Override penuh referensi base image |
-
-Dockerfile extension:
-
-| Stage | Isi |
-| --- | --- |
-| `builder` (`FROM <ver>-builder`) | COPY `package.json` + lock → `/app/extension` → `npm ci` → COPY source → symlink `web-container/current-client -> ../extension` → typecheck + test (`--if-present`) + lint → `check:base` → `CLIENT=<client> npm run build:client` |
-| `runtime` (`FROM <ver>`) | Ganti `/usr/share/nginx/html` dengan dist client; `ENV VITE_CLIENT=<client>` |
-
-- Verifikasi (typecheck/test/lint) berjalan **di dalam builder image** — dijamin terhadap base yang sama; pipeline extension tidak perlu checkout repo base.
-- `check:base` membandingkan `manifest.json:baseVersion` dengan `/app/BASE_VERSION` di builder image; mismatch = build berhenti.
-- Base image private → `docker login` sebelum build (skrip tidak menangani auth).
-- Image final hanya nginx + dist client (tanpa source/node_modules).
+Struktur diagram sama dengan `ARCHITECTURE §8`. Target runtime di akhir alur: laptop (Tutorial A), Ubuntu server (Tutorial B), atau VM yang di-deploy pipeline Azure (Tutorial C).
 
 ---
 
-## 5. Run Container (Docker)
+## Tutorial A — Deploy di Laptop (Local)
 
-### 5.1 `docker run`
+**Tujuan:** membangun base image dan client image di laptop, menjalankannya di `localhost:8080`, dan memverifikasi `/config.json` — tanpa push ke registry. Ini jalur tercepat untuk menguji perubahan build/deploy sebelum menyentuh server.
+
+Dijalankan dari root workspace (folder yang memuat `ci/build-base.sh` dan `web-extension-client-a/`). Docker harus berjalan; Node 22 + npm hanya dibutuhkan karena `VERIFY=1`. Cek cepat:
 
 ```bash
-docker run -d \
-  --name arsi-web-client-a \
-  -p 8080:80 \
+docker version --format '{{.Server.Version}}'   # Docker Engine aktif
+node -v                                         # v22.x (untuk VERIFY=1)
+git rev-parse --short HEAD                      # calon tag <sha>
+```
+
+### A.1 Build base image
+
+```bash
+ORG=<org> VERIFY=1 PUSH=0 ./ci/build-base.sh
+```
+
+Yang terjadi:
+
+- `VERIFY=1` menjalankan verifikasi penuh sebelum build: `web-modules` (ci, typecheck, test, lint), `web-extension-default` (ci, typecheck, lint), lalu `web-container` (link `current-client` → extension default, ci, typecheck, test, `test:entrypoint`, `check:dockerfile`, `check:base`, build base). `VERIFY=0` melewati semua ini.
+- Build dua target: `builder` (tag `<versi>-builder` + `<sha>-builder`) lalu `runtime` (tag `<versi>` + `<sha>`).
+- `PUSH=0` — tidak ada yang dikirim ke registry.
+- `<versi>` diambil dari `web-container/package.json:version` (saat ini `0.1.0`); `<sha>` dari `git rev-parse --short HEAD`.
+
+Output yang diharapkan:
+
+```text
+[build-base] version=0.1.0 sha=<sha> image=docker.io/<org>/arsi-web-base
+```
+
+Verifikasi tag lokal:
+
+```bash
+docker images 'docker.io/<org>/arsi-web-base'
+```
+
+Empat tag harus muncul: `0.1.0`, `0.1.0-builder`, `<sha>`, `<sha>-builder`. Build pertama lama (unduh base image + `npm ci` di dalam build); build berikutnya memakai cache layer.
+
+### A.2 Build client image
+
+```bash
+cd web-extension-client-a
+ORG=<org> PULL=0 PUSH=0 BUILD_ID=local ./ci/build-client.sh
+```
+
+- `PULL=0` wajib di tutorial ini: base belum pernah di-push, jadi jangan coba pull dari registry — pakai image base lokal dari A.1.
+- `BUILD_ID=local` menamai image `docker.io/<org>/arsi-web-client-a:local`.
+- `BASE_VERSION` dan `CLIENT_NAME` diambil dari `manifest.json` (`0.1.0` dan `client-a`). `check:base` memverifikasi `baseVersion` terhadap `/app/BASE_VERSION` di dalam builder image — beda versi = build gagal.
+- Verifikasi extension (`typecheck`, `test --if-present`, `lint`) berjalan **di dalam builder image**, lalu `CLIENT=client-a npm run build:client`.
+
+Output yang diharapkan:
+
+```text
+[build-client] client=client-a base=0.1.0 image=docker.io/<org>/arsi-web-client-a:local
+```
+
+### A.3 Jalankan container
+
+```bash
+docker run -d --name arsi-local -p 8080:80 \
   -e VITE_CLIENT=client-a \
   -e VITE_MODULES=user-management,product-management,module-sample \
-  -e VITE_API_BASE=https://staging-api.example.com \
-  -e VITE_ENABLE_AUDIT_LIVE=true \
-  --restart unless-stopped \
-  --health-cmd "wget -qO- http://127.0.0.1/ >/dev/null || exit 1" \
-  --health-interval 30s --health-timeout 5s --health-retries 3 \
-  docker.io/<org>/arsi-web-client-a:<tag>
+  -e VITE_API_BASE=https://dummyjson.com \
+  docker.io/<org>/arsi-web-client-a:local
 ```
 
-Base runtime juga bisa dijalankan standalone (extension default, client `base`):
+`entrypoint.sh` (dibawa base runtime) menulis `/config.json` dari env di atas saat container start. Ganti env = hapus container lalu jalankan ulang; tidak perlu build ulang image.
+
+Base runtime juga bisa dijalankan standalone (extension default, client `base`) untuk smoke test cepat:
 
 ```bash
-docker run -d -p 8080:80 docker.io/<org>/arsi-web-base:<ver>
+docker run -d --name arsi-base -p 8081:80 docker.io/<org>/arsi-web-base:0.1.0
 ```
 
-### 5.2 `docker-compose.yml` (contoh)
-
-```yaml
-services:
-  web:
-    image: docker.io/<org>/arsi-web-client-a:${TAG:-latest}
-    container_name: arsi-web-client-a
-    ports:
-      - "8080:80"
-    environment:
-      VITE_CLIENT: client-a
-      VITE_MODULES: user-management,product-management,module-sample
-      VITE_API_BASE: https://staging-api.example.com
-      VITE_ENABLE_AUDIT_LIVE: "true"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-```
+### A.4 Smoke test
 
 ```bash
-TAG=2026.10.01 docker compose up -d
-TAG=2026.10.01 docker compose up -d --force-recreate   # apply env baru
-```
-
-TLS/reverse proxy (nginx/Traefik/ALB) dikonfigurasi di host, bukan di container ini.
-
-Panduan runtime produksi lengkap di VM Linux (install Docker, TLS Let's Encrypt, update, rollback, firewall, operasional): `VM-DEPLOYMENT-GUIDE.en.md` (English).
-
----
-
-## 6. Runtime Configuration
-
-`entrypoint.sh` (dibawa base runtime, dijalankan otomatis oleh image nginx saat start) menulis `/usr/share/nginx/html/config.json`:
-
-| Env | Default | Fungsi |
-| --- | --- | --- |
-| `VITE_CLIENT` | `base` | Nama client di config (`client`); image client menyetel `ENV VITE_CLIENT=<client>` |
-| `VITE_MODULES` | `user-management` | CSV modul yang **di-init** saat runtime (contoh: `user-management,product-management,module-sample`) |
-| `VITE_API_BASE` | `https://dummyjson.com` | Base URL API untuk `deps.api` dan service modul |
-| `VITE_ENABLE_AUDIT_LIVE` | `true` | Feature flag (`featureFlags.enableAuditLive`) |
-| `VITE_CONFIG_JSON` | — | **Override penuh** `/config.json` (JSON object). Jika diisi, empat env di atas diabaikan. |
-
-Catatan penting:
-
-- **Modul harus ada di build** — semua modul di `web-modules/modules/` selalu ter-bundle (lazy chunk); `VITE_MODULES` hanya menentukan mana yang aktif saat runtime. Nama modul **harus sama** dengan nama folder; kalau tidak, app gagal boot dengan `[bootstrap] module "x" is declared in config.modules but has no entry in web-modules/modules`.
-- **Override penuh (CI-friendly)** — `VITE_CONFIG_JSON` menulis `config.json` apa adanya (multiline dipadatkan ke satu baris) dan mengabaikan env individual. Nilai **wajib** object JSON (diawali `{`, diakhiri `}`); kalau tidak, container **gagal start** dengan `[entrypoint] VITE_CONFIG_JSON must be a JSON object`. Pakai bila CI perlu mengeset field di luar empat env di atas (mis. feature flag tambahan):
-
-  ```json
-  {"client":"bca","modules":["user-management","product-management"],"apiBase":"https://api.bca.example","featureFlags":{"enableAuditLive":false,"newFlag":true}}
-  ```
-
-- Config runtime satu sumber di base: `entrypoint.sh` + `nginx.conf` dibawa base runtime; image client hanya mengganti `/usr/share/nginx/html` dengan dist client.
-- Config dibaca dengan `cache: 'no-store'`; nginx juga mengirim `Cache-Control: no-store` untuk `/config.json`.
-- Ganti env = recreate container (`docker compose up -d --force-recreate`), tanpa rebuild image.
-- Verifikasi setelah start: `curl -s http://localhost:8080/config.json | jq .`
-
----
-
-## 7. Registry & Tagging
-
-- Registry: **Docker Hub**. Image base `<org>/arsi-web-base`; image client `<org>/arsi-web-<client>` (contoh `<org>/arsi-web-client-a`).
-- Tag base: `<ver>` + `<ver>-builder` (dari `web-container/package.json:version`), ditambah immutable `<sha>` + `<sha>-builder`.
-- Tag client: `<buildId>` (immutable; CI build ID / short SHA). Hindari `latest` di produksi.
-- Promosi staging → production = **retag/pull image yang sama**, bukan rebuild:
-  ```bash
-  docker pull docker.io/<org>/arsi-web-client-a:<buildId>
-  docker tag  docker.io/<org>/arsi-web-client-a:<buildId> docker.io/<org>/arsi-web-client-a:prod-<date>
-  docker push docker.io/<org>/arsi-web-client-a:prod-<date>
-  ```
-- Rollback = deploy tag sebelumnya (`TAG=<buildId-sebelumnya> docker compose up -d --force-recreate`).
-- Base dipin per client: image client hanya dibangun terhadap base `<ver>` sesuai `manifest.json:baseVersion`. Jangan retag base lama ke versi baru.
-
----
-
-## 8. CI/CD (Generik)
-
-Tidak ada YAML platform spesifik; pipeline apa pun (Azure DevOps, GitHub Actions, Jenkins) cukup memanggil skrip shell di tiap repo.
-
-### 8.1 Pipeline repo base
-
-| Langkah | Perintah |
-| --- | --- |
-| Checkout repo base | `git clone <repo-base>` |
-| Node 22 di runner (untuk `VERIFY=1`) | `actions/setup-node@v4` / `NodeTool@0` / dsb. |
-| Login registry | `docker login` (token dari secret CI) |
-| Build + push base | `ORG=<org> VERIFY=1 PUSH=1 ./ci/build-base.sh` |
-
-### 8.2 Pipeline repo extension
-
-| Langkah | Perintah |
-| --- | --- |
-| Checkout repo extension | `git clone <repo-extension-<client>>` |
-| Login registry (base image private) | `docker login` (token dari secret CI) |
-| Build + push client | `ORG=<org> PUSH=1 BUILD_ID=$CI_BUILD_ID ./ci/build-client.sh` |
-| Smoke test | `docker run` image hasil → `curl -sf localhost:8080/config.json` (+ `/`, deep link) sebelum/sesudah push |
-
-Catatan:
-
-- Pipeline extension **tidak** men-checkout repo base; build hanya butuh pull image base dari registry.
-- `VERIFY=1` opsional; verifikasi extension sudah berjalan di dalam builder image saat `ci/build-client.sh`.
-- Mengadopsi base baru = PR di repo extension yang menaikkan `manifest.json:baseVersion` (lihat §9).
-
----
-
-## 9. Environments & Promotion
-
-| Environment | Image | Config |
-| --- | --- | --- |
-| Staging | client image `<buildId>` | `VITE_API_BASE=https://staging-api…`, `VITE_MODULES=…` |
-| Production | image yang **sama**, dipromosikan | `VITE_API_BASE=https://api…`, `VITE_MODULES=…` |
-
-- Perbedaan **hanya env** — tidak ada rebuild.
-- Simpan nilai env per environment di secret manager/CI variable group (bukan di repo).
-- Setelah ubah env: recreate container; cek `/config.json`.
-- **Adopsi base baru**: bump `baseVersion` di `manifest.json` repo extension (PR) → CI membangun ulang image client terhadap base tag baru. Repo base tidak di-checkout dan client lain tidak terpengaruh sampai mereka bump sendiri.
-
----
-
-## 10. Smoke Test Pasca-Deploy
-
-```bash
-BASE=http://localhost:8080
-
-# 1. Config sesuai environment
-curl -sf "$BASE/config.json" | jq -e '.client and .modules and .apiBase'
+# 1. Config sesuai env
+curl -sf localhost:8080/config.json | jq -e '.client and .modules and .apiBase'
 
 # 2. Halaman utama 200
-curl -sI "$BASE/" | head -1
+curl -s -o /dev/null -w "%{http_code}\n" localhost:8080/
 
-# 3. Deep link SPA fallback (harus 200 + index.html)
-curl -s "$BASE/products/1" | grep -q '<div id="root">'
+# 3. Deep link SPA fallback (harus 200 + index.html, bukan 404)
+curl -s localhost:8080/products/1 | grep -q '<div id="root">'
 
-# 4. Header cache aset immutable
-curl -sI "$BASE/assets/$(curl -s "$BASE/" | grep -o 'assets/index-[^"]*\.js' | head -1 | cut -d/ -f2)" \
-  | grep -i 'cache-control: public, immutable'
+# 4. Header cache config
+curl -sI localhost:8080/config.json | grep -i 'cache-control: no-store'
 
 # 5. Log entrypoint
-docker logs arsi-web-client-a | grep 'Generated'
+docker logs arsi-local 2>&1 | grep 'Generated'
 ```
 
-Checklist manual: login/route modul sesuai `VITE_MODULES`, theme/locale, deep-link tidak 404, `config.json` tidak ter-cache browser.
+Hasil yang diharapkan:
 
----
+- `/config.json` memuat `"client":"client-a"`, `"modules":["user-management","product-management","module-sample"]`, dan `"apiBase":"https://dummyjson.com"`.
+- `/` merespons `200`; `/products/1` mengembalikan `index.html` lewat fallback `try_files $uri $uri/ /index.html`.
+- Log memuat `Generated /usr/share/nginx/html/config.json for client client-a`.
+- `/config.json` dikirim dengan `Cache-Control: no-store` (browser tidak meng-cache config).
 
-## 11. Troubleshooting
-
-| Gejala | Penyebab & solusi |
-| --- | --- |
-| `[bootstrap] module "x" … has no entry` | `VITE_MODULES` memuat nama yang bukan folder di `web-modules/modules/`. Perbaiki env atau tambahkan modul ke build. |
-| Modul tidak muncul walau env benar | Modul belum ter-bundle (build lama) atau tidak ada di `config.json` runtime. Cek `curl /config.json`, rebuild image. |
-| Perubahan config tidak terlihat | Browser cache (harus `no-store`) atau container belum di-recreate. `docker compose up -d --force-recreate`. |
-| Container gagal start: `[entrypoint] VITE_CONFIG_JSON must be a JSON object` | `VITE_CONFIG_JSON` bukan object JSON (terpotong, array, atau salah kutip). Perbaiki nilainya, atau kosongkan untuk memakai env individual. |
-| App boot tanpa module setelah override | `VITE_CONFIG_JSON` valid tapi `modules` kosong/tidak ada. Isi dengan nama module yang ter-bundle; cek `curl /config.json`. |
-| `check:base` mismatch | Pesan `[check:base] baseVersion manifest (x) != base image (y)`. Samakan `manifest.json:baseVersion` dengan tag base, atau pakai `BASE_BUILDER_IMAGE` yang benar/rebuild base. |
-| Tag base `<ver>-builder` tidak ditemukan saat pull | Base versi itu belum dibuild/push, atau `REGISTRY`/`ORG` salah. Jalankan `ci/build-base.sh` di repo base atau samakan `BASE_VERSION`/`manifest.json:baseVersion`. |
-| Build Docker gagal: `package.json` modul tidak ditemukan | Modul baru belum ditambah `COPY` di `Dockerfile` root repo base. Jalankan `npm run check:dockerfile`, tambah baris COPY. |
-| `npm ci` extension gagal (lockfile) | `package-lock.json` extension tidak sinkron dengan `package.json`-nya (atau dengan lockfile versi ini). Jalankan `npm install` di repo extension, commit lockfile baru. |
-| `npm ci` gagal di CI | Lockfile tidak sinkron (modul baru belum `npm install` di `web-modules`). Commit lockfile. |
-| Deep link 404 | `try_files` nginx hilang/berubah — pastikan `nginx.conf` memakai `try_files $uri $uri/ /index.html`. |
-| Loader map stale di image | Build dipanggil bukan lewat `npm run build:client` / `npm run build` (pre-hook `gen:modules` tidak jalan). Pakai script npm. |
-| Docker build konteks salah (`COPY failed`) | Base wajib dibuild dari root repo base; extension dari root repo extension. Skrip `ci/build-*.sh` sudah menjalankan `docker build` dari direktori yang benar. |
-| Asset 404 setelah deploy | Base path berubah? Jangan ubah `base` Vite tanpa koordinasi; aset dilayani dari `/assets/`. |
-| `pull access denied` / 401 base image | Base builder/runtime private; jalankan `docker login` (token CI) sebelum build extension. |
-| Engine warning saat `npm install` | Node lokal > target; aman bila test lulus. CI/Docker memakai Node 22. |
-
----
-
-## 12. Security
-
-- **Tidak ada secret di image** — hanya config publik. Jangan pernah menaruh token/secret di `VITE_*` (nilainya masuk `/config.json` yang bisa dibaca siapa pun).
-- TLS diterminasi di reverse proxy/ingress host; container hanya HTTP:80.
-- Batasi akses registry (access token/robot account Docker Hub); scan image (Docker Hub/Trivy) sebelum promosi.
-- Base builder image memuat source + `node_modules` — jaga tetap private; hanya dipakai pipeline extension.
-- Jalankan container dengan user non-root bila diperlukan (nginx master saat ini root; opsi hardening terpisah).
-- Audit: catat tag image client + base version + nilai env per deploy; `config.json` mengungkap `client`, `modules`, `apiBase` — pastikan tidak sensitif.
-
----
-
-## 13. Appendix — Cheat Sheet
+### A.5 Cleanup
 
 ```bash
-# Build base (root repo base)
-ORG=<dockerhub-org> VERIFY=1 PUSH=1 ./ci/build-base.sh
-
-# Build client (root repo extension)
-ORG=<dockerhub-org> PUSH=1 BUILD_ID=$(git rev-parse --short HEAD) ./ci/build-client.sh
-
-# Verifikasi sebelum build (repo base)
-cd web-container && npm run check:dockerfile
-
-# Jalankan client
-docker run -d -p 8080:80 -e VITE_API_BASE=https://staging-api.example.com \
-  docker.io/<org>/arsi-web-client-a:<tag>
-
-# Cek config & log
-curl -s localhost:8080/config.json | jq .
-docker logs arsi-web-client-a | grep Generated
-
-# Rollback
-TAG=<tag-sebelumnya> docker compose up -d --force-recreate
+docker rm -f arsi-local
+docker rmi docker.io/<org>/arsi-web-client-a:local
+docker rmi docker.io/<org>/arsi-web-base:0.1.0 docker.io/<org>/arsi-web-base:0.1.0-builder
 ```
 
-| File | Peran |
+Tag `<sha>` dan `<sha>-builder` masih menunjuk image base yang sama; hapus juga bila tidak diperlukan:
+
+```bash
+docker rmi docker.io/<org>/arsi-web-base:<sha> docker.io/<org>/arsi-web-base:<sha>-builder
+```
+
+Ganti `<sha>` dengan nilai dari output A.1 (default `git rev-parse --short HEAD` saat build). Build cache bisa dibersihkan sekaligus dengan `docker builder prune`.
+
+### A.6 Gagal di tengah jalan?
+
+| Gejala | Sebab & solusi |
 | --- | --- |
-| `Dockerfile` (root repo base) | Multi-target base: `builder` / `base-app` / `runtime` |
-| `ci/build-base.sh` | Build + push 2 image base + tag immutable |
-| `web-extension-default/` | Extension default untuk base runtime (client `base`) |
-| `web-container/docker/entrypoint.sh` | Generate `/config.json` dari env |
-| `web-container/docker/entrypoint.test.sh` | Shell test untuk generasi `/config.json` (env individual + `VITE_CONFIG_JSON`) |
-| `web-container/nginx.conf` | SPA fallback + cache header |
-| `web-container/scripts/check-dockerfile-modules.mjs` | Guard COPY `package.json` modul di Dockerfile root |
-| `web-container/scripts/check-base-version.mjs` | Guard `baseVersion` manifest vs base image |
-| `.dockerignore` (root repo base) | Exclude node_modules/dist/folder extension non-base dari context |
-| `web-extension-client-<x>/Dockerfile` | Build image client `FROM` base image |
-| `web-extension-client-<x>/ci/build-client.sh` | Build + push image client |
-| `web-extension-client-<x>/manifest.json` | `client` + `baseVersion` (pin exact) |
+| `pull access denied` / `not found` saat build client | `PULL` default `1`. Jalankan dengan `PULL=0` (Tutorial A) atau login dan push base dulu (Tutorial B–C). |
+| `[check:base] baseVersion manifest (0.1.0) != base image (x)` | Base lokal bukan versi yang dipin manifest. Build ulang base A.1 dengan versi yang sama, atau samakan `BASE_VERSION`. |
+| `Cannot connect to the Docker daemon` | Docker Engine belum berjalan — cek `docker version`, start Docker Desktop / `systemctl start docker`. |
+| Port 8080 sudah dipakai | Ganti `-p 8080:80` menjadi `-p 8081:80` dan sesuaikan URL smoke test. |
+| `node: command not found` saat `VERIFY=1` | Pasang Node 22, atau jalankan `VERIFY=0` (verifikasi dilewati, image tetap dibangun). |
+| `jq: command not found` | Pasang `jq` (`brew install jq`, `apt install jq`), atau ganti dengan `grep '"client"'`. |
+| `/config.json` masih berisi config lama | Container belum di-recreate — `docker rm -f arsi-local` lalu jalankan ulang perintah A.3. |
+| Image tidak jalan di server (`exec format error`) | Arsitektur image mengikuti laptop saat build (mis. `linux/arm64` di Apple Silicon); CI/produksi umumnya `linux/amd64`. Bangun lewat CI atau set `--platform` yang sesuai. |
 
----
+### ✅ Checklist Tutorial A
 
-**Document version**: 0.2.0
-**Last updated**: 2026-10-02
+- [ ] Empat tag base lokal muncul: `<versi>`, `<versi>-builder`, `<sha>`, `<sha>-builder`.
+- [ ] Image client `docker.io/<org>/arsi-web-client-a:local` terbentuk.
+- [ ] `curl -sf localhost:8080/config.json | jq -e '.client'` mengembalikan `"client-a"`.
+- [ ] Halaman `/` merespons 200 dan deep link `/products/1` mengembalikan `index.html`, bukan 404.
+- [ ] `docker logs arsi-local` memuat baris `Generated ...`.
+- [ ] Cleanup A.5 selesai.
+
+Lanjutkan ke Tutorial B (Ubuntu server) untuk deploy sungguhan, lalu Tutorial C (Azure CI/CD) untuk otomatisasi build & deploy.
