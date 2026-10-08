@@ -328,6 +328,20 @@ Jika modul `user-management` tidak ada di `config.modules`, override `/users/:id
 
 Container menyusun router dari `getRoutes()` **setelah** discovery: route modul ditempel sebagai children di bawah `/` (di belakang `ProtectedRoute` + `AppShell`, `web-container/src/bootstrap/index.tsx:28-41`), dan leading slash dilepas saat pemetaan (`bootstrap/index.tsx:23`). Alur lengkapnya di §5.
 
+**Route dinamis & query string.** Registry menyimpan path **sebagai string** (`web-container/src/routes/routeRegistry.ts:22-29`); saat boot, container memetakan setiap path ke React Router dengan melepas leading `/` lalu meneruskannya ke `createBrowserRouter` (`web-container/src/bootstrap/index.tsx:22-26`).
+
+- React Router v6 mencocokkan segmen dinamis `:id` secara bawaan; pola statis menang atas pola dinamis. Halaman membaca param lewat `useParams` — contoh nyata: `/users/:id` didaftarkan di `web-modules/modules/user-management/index.tsx:42` dan dibaca di `web-modules/modules/user-management/pages/UserDetailPage.tsx:12`.
+- `has`/`override` mencocokkan **string persis**: extension yang mengganti route dinamis menulis pola yang sama (`'/users/:id'`, mis. `web-extension-client-a/src/index.tsx:64`), bukan URL konkret.
+- Query string (`/users?state=online`) tidak pernah bagian dari registrasi atau pencocokan route. Halaman membacanya lewat `useSearchParams`, lalu nilainya diteruskan ke service/query key React Query; belum ada contohnya di sample ini.
+- Deploy: fallback SPA nginx (`try_files $uri $uri/ /index.html`, `web-container/nginx.conf:18`) melayani deep link mana pun, dan query string dipertahankan browser.
+
+```tsx
+// Halaman dinamis: param dari path, filter dari query string.
+const { id } = useParams<{ id: string }>();
+const [searchParams] = useSearchParams();
+const state = searchParams.get('state');
+```
+
 ### 4.5 Service Registry (`apiRegistry`)
 
 Service dengan client sendiri didaftarkan ke registry bernama supaya modul tidak saling meng-import instance axios. Modul mendaftarkan instance miliknya:

@@ -328,6 +328,20 @@ If the `user-management` module is not in `config.modules`, the `/users/:id` ove
 
 The container builds the router from `getRoutes()` **after** discovery: module routes are attached as children under `/` (behind `ProtectedRoute` + `AppShell`, `web-container/src/bootstrap/index.tsx:28-41`), with the leading slash stripped during mapping (`bootstrap/index.tsx:23`). The full flow is in §5.
 
+**Dynamic routes & query strings.** The registry stores the path **as a string** (`web-container/src/routes/routeRegistry.ts:22-29`); at boot, the container maps every registered path to React Router by stripping the leading `/` and passing it to `createBrowserRouter` (`web-container/src/bootstrap/index.tsx:22-26`).
+
+- React Router v6 matches `:id` dynamic segments natively; static patterns beat dynamic ones. Pages read params via `useParams` — real example: `/users/:id` registered at `web-modules/modules/user-management/index.tsx:42` and read in `web-modules/modules/user-management/pages/UserDetailPage.tsx:12`.
+- `has`/`override` match the **exact string**: an extension overriding a dynamic route writes the same pattern (`'/users/:id'`, e.g. `web-extension-client-a/src/index.tsx:64`), never a concrete URL.
+- Query strings (`/users?state=online`) are never part of registration or route matching. Pages read them with `useSearchParams`, then pass the values to services/React Query keys; there is no example in this sample yet.
+- Deploy: the nginx SPA fallback (`try_files $uri $uri/ /index.html`, `web-container/nginx.conf:18`) serves any deep link, and the browser preserves the query string.
+
+```tsx
+// Dynamic page: params from the path, filters from the query string.
+const { id } = useParams<{ id: string }>();
+const [searchParams] = useSearchParams();
+const state = searchParams.get('state');
+```
+
 ### 4.5 Service Registry (`apiRegistry`)
 
 Services with their own client are registered in a named registry so modules never import each other's axios instances. A module registers its own instance:

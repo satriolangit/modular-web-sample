@@ -872,6 +872,12 @@ Build & push image klien memakai `ci/build-client.sh` (base tidak dibangun ulang
 
 Buka bab ini saat menulis kode. Aturan lengkapnya ada di `CONTRACT §15`; di sini ringkasannya.
 
+**Route & query.** Aturan cepat saat menangani URL:
+
+- Daftarkan **pola** route (`/users/:id`, bukan URL konkret); `has`/`override` mencocokkan string persis.
+- Baca param path dengan `useParams`; baca query string (`?state=online`) dengan `useSearchParams`.
+- Masukkan nilai filter ke query key React Query (`userKeys.list({ search })`) agar cache tetap benar.
+
 ### 5.1 Naming
 
 | Aspek | Format | Contoh |

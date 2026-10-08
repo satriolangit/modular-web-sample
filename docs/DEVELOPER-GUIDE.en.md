@@ -872,6 +872,12 @@ Building & pushing the client image uses `ci/build-client.sh` (the base is not r
 
 Open this chapter while writing code. The full rules live in `CONTRACT §15`; this is the summary.
 
+**Routes & queries.** Quick rules when handling URLs:
+
+- Register the route **pattern** (`/users/:id`, never a concrete URL); `has`/`override` match the exact string.
+- Read path params with `useParams`; read the query string (`?state=online`) with `useSearchParams`.
+- Put filter values into React Query keys (`userKeys.list({ search })`) so the cache stays correct.
+
 ### 5.1 Naming
 
 | Aspect | Format | Example |
