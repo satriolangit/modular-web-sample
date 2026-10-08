@@ -14,6 +14,7 @@ import { ClientASamplePanel } from './components/ClientASamplePanel';
 import en from './i18n/en.json';
 import id from './i18n/id.json';
 import { ClientAUserDetail } from './overrides/user-management/ClientAUserDetail';
+import { ClientAReportsPage } from './pages/ClientAReportsPage';
 
 let initialized = false;
 
@@ -73,6 +74,20 @@ export default async function init(deps: Deps): Promise<void> {
   overrideIfPresent(deps, '/module-sample/extension-points', {
     element: <ClientAExtensionPointsPage />,
     meta: { group: 'sample', module: 'module-sample' },
+  });
+
+  // Fitur extension-only: halaman + menu yang hanya ada di extension ini.
+  deps.routes.add({
+    path: '/client-a/reports',
+    element: <ClientAReportsPage />,
+    meta: { group: 'client-a', module: 'client-a' },
+  });
+
+  deps.menu.register({
+    path: '/client-a/reports',
+    label: 'menu.reports',
+    namespace: 'client-a',
+    order: 90,
   });
 
   deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {

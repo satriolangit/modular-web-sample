@@ -8,6 +8,13 @@
     "description": "Halaman ini dirender oleh route override client-a."
   },
   "badge": "Diperluas oleh client-a",
+  "menu": { "reports": "Laporan" },
+  "reports": {
+    "badge": "Hanya di extension",
+    "title": "Laporan Client A",
+    "description": "Halaman dan menu ini didaftarkan hanya oleh extension client-a — tanpa perubahan module base.",
+    "note": "Fitur ini hanya ada di repo ini. Lihat DEVELOPER-GUIDE Bab 4."
+  },
   "sample": {
     "panelBadge": "Slot terisi",
     "panelTitle": "Panel Client A",

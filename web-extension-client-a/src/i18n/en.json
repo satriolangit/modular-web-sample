@@ -8,6 +8,13 @@
     "description": "This page is rendered by the client-a route override."
   },
   "badge": "Extended by client-a",
+  "menu": { "reports": "Reports" },
+  "reports": {
+    "badge": "Extension-only",
+    "title": "Client A reports",
+    "description": "Page and menu registered only by the client-a extension — no base module changes.",
+    "note": "This feature exists only in this repository. See DEVELOPER-GUIDE Chapter 4."
+  },
   "sample": {
     "panelBadge": "Slot filled",
     "panelTitle": "Client A panel",

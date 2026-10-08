@@ -27,6 +27,7 @@ function createFakeDeps({ routeExists = true }: { routeExists?: boolean } = {}) 
     getRoutes: vi.fn(() => []),
     has: vi.fn(() => routeExists),
   };
+  const menu = { register: vi.fn(), getAll: vi.fn(() => []) };
   const events = {
     on: vi.fn<(event: string, handler: (payload: unknown) => void) => () => void>(() => () => {}),
     off: vi.fn(),
@@ -48,6 +49,7 @@ function createFakeDeps({ routeExists = true }: { routeExists?: boolean } = {}) 
     apiRegistry,
     slots,
     routes,
+    menu,
     events,
     i18n,
     queryClient,
@@ -57,6 +59,7 @@ function createFakeDeps({ routeExists = true }: { routeExists?: boolean } = {}) 
     apiRegistry,
     slots,
     routes,
+    menu,
     events,
     i18n,
     logger,
@@ -100,6 +103,26 @@ describe('client-a extension init', () => {
         meta: { group: 'sample', module: 'module-sample' },
       }),
     );
+  });
+
+  it('registers an extension-only route and menu item', async () => {
+    const { deps, routes, menu } = createFakeDeps();
+    const init = await loadInit();
+
+    await init(deps);
+
+    expect(routes.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/client-a/reports',
+        meta: { group: 'client-a', module: 'client-a' },
+      }),
+    );
+    expect(menu.register).toHaveBeenCalledWith({
+      path: '/client-a/reports',
+      label: 'menu.reports',
+      namespace: 'client-a',
+      order: 90,
+    });
   });
 
   it('overrides the module i18n bundle with deep merge', async () => {
@@ -146,7 +169,7 @@ describe('client-a extension init', () => {
   });
 
   it('is idempotent so React StrictMode double-invocation is safe', async () => {
-    const { deps, apiRegistry, slots, routes } = createFakeDeps();
+    const { deps, apiRegistry, slots, routes, menu } = createFakeDeps();
     const init = await loadInit();
 
     await init(deps);
@@ -155,5 +178,7 @@ describe('client-a extension init', () => {
     expect(apiRegistry.register).toHaveBeenCalledTimes(1);
     expect(slots.register).toHaveBeenCalledTimes(2);
     expect(routes.override).toHaveBeenCalledTimes(2);
+    expect(routes.add).toHaveBeenCalledTimes(1);
+    expect(menu.register).toHaveBeenCalledTimes(1);
   });
 });
