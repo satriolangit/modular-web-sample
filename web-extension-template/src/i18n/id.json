@@ -1,0 +1,9 @@
+{
+  "menu": { "sample": "Sample extension" },
+  "sample": {
+    "badge": "Hanya di extension",
+    "title": "Fitur khusus extension",
+    "description": "Halaman dan menu ini didaftarkan hanya oleh extension ini — tanpa perubahan module base.",
+    "note": "Pakai sample ini sebagai titik awal; hapus bila tidak diperlukan."
+  }
+}

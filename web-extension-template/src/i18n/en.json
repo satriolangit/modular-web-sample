@@ -1,0 +1,9 @@
+{
+  "menu": { "sample": "Extension sample" },
+  "sample": {
+    "badge": "Extension-only",
+    "title": "Extension-only feature",
+    "description": "This page and menu are registered only by this extension — no base module changes.",
+    "note": "Use this sample as a starting point; delete it if not needed."
+  }
+}
