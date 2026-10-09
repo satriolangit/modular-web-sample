@@ -715,7 +715,7 @@ overrideIfPresent(deps, '/users/:id', {
 });
 ```
 
-The guard is **required** for routes of modules that can be disabled (`CONTRACT §12.4`). Without it, disabling a module via `config.modules` makes boot fail with `[routes] cannot override unknown route`. Init order helps: an extension always inits **after** all modules, so `routes.has` is already final. An extension may also add a new route with `deps.routes.add` — include `meta.module`.
+The guard is **required** for routes of modules that can be disabled (`CONTRACT §12.4`). Without it, disabling a module via `config.modules` makes boot fail with `[routes] cannot override unknown route`. Init order helps: an extension always inits **after** all modules, so `routes.has` is already final. An extension may also add a new route with `deps.routes.add` — include `meta.module`; the pattern is in **Step 4**.
 
 ### Step 3 — Level 3: service wrapper
 
@@ -743,7 +743,32 @@ const service = useMemo(() => {
 
 Living example: `web-extension-client-a/src/hooks/useClientASample.ts`. Full rules: `CONTRACT §4`.
 
-### Step 4 — i18n and events
+### Step 4 — Client-only new feature (route + menu)
+
+Use it when a client need has no counterpart in the base: a page and menu that do not attach to any module. Two registrations, both in `init(deps)` — example from `web-extension-client-a/src/index.tsx:79-91`:
+
+```tsx
+deps.routes.add({
+  path: '/client-a/reports',
+  element: <ClientAReportsPage />,
+  meta: { group: 'client-a', module: 'client-a' },
+});
+
+deps.menu.register({
+  path: '/client-a/reports',
+  label: 'menu.reports',
+  namespace: 'client-a',
+  order: 90,
+});
+```
+
+- The feature namespace is the client id: path `/<client>/...`, `meta: { group: '<client>', module: '<client>' }`, and an i18n bundle under the `<client>` namespace (the `menu.reports` label lives in client-a's `i18n/{en,id}.json`).
+- `web-extension-template` already ships a similar sample that derives the client id from `deps.config.client` at runtime (`src/index.tsx:18-36`, path `/<client>/sample`) — no manual edits. Delete that block if unused.
+- ⚠️ Register the route **and** the menu together: the Sidebar renders every item from `menu.getAll()` without filtering (`web-container/src/layout/Sidebar.tsx:16,33-37`), so a menu without a route (or vice versa) confuses users. Route paths **must** be unique — a duplicate throws in the registry.
+- ✅ Checkpoint: open `/<client>/...` — the menu appears in the Sidebar and the page renders.
+- 📖 Concepts and how it sits beside the three override levels → `ARCHITECTURE §7`; route rules → `CONTRACT §12.4`.
+
+### Step 5 — i18n and events
 
 Two adjustments almost every extension needs:
 
@@ -770,7 +795,7 @@ Allowed event directions (`CONTRACT §13`):
 | Extension emit → module listen | ✗ (the base must not know about the extension) |
 | Extension emit → extension listen | ✓ (namespace `<client>.<entity>.<action>`) |
 
-### Step 5 — Extension tests
+### Step 6 — Extension tests
 
 Tests for the override are **required**. The pattern in `web-extension-client-a/src/__tests__/init.test.ts`: `createFakeDeps()` + `vi.resetModules()` + dynamic import, then assert the registry calls:
 
@@ -791,7 +816,7 @@ npm run typecheck && npm test && npm run lint
 
 The first time an extension imports a module, add the `@arsi/module-<folder>` alias in the extension's `aliases.cjs` + `tsconfig.json` (see `web-extension-client-a/aliases.cjs`).
 
-### Step 6 — See the override in dev
+### Step 7 — See the override in dev
 
 ```bash
 cd web-container

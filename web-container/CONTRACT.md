@@ -961,6 +961,7 @@ deps.routes.add({
 - Extension **boleh** override route modul.
 - Extension yang meng-override route milik module **opsional** **wajib** memeriksa `routes.has(path)` lebih dulu (lewati + `logger.warn` bila belum ada) atau memastikan module tersebut aktif di `config.modules`; override route tak dikenal tetap **throw** di registry.
 - Extension **boleh** tambah route baru.
+- Route baru milik klien (tidak menempel ke module base) memakai namespace klien: path `/<client>/...` dan `meta.module: "<client>"`; daftarkan menu-nya bersamaan agar navigasi konsisten.
 - Route baru **wajib** punya `meta.module` untuk tracking.
 - Route path **wajib** konsisten dengan prefix modul.
 - Route **wajib** register di `init(deps)`.
@@ -1225,11 +1226,12 @@ Sebelum merge PR:
 
 ---
 
-**Document version**: 0.7.4
-**Last updated**: 2026-10-06
+**Document version**: 0.7.5
+**Last updated**: 2026-10-07
 
 **Changelog:**
 
+- **0.7.5** — §12.4: route baru milik klien memakai namespace klien (path `/<client>/...`, `meta.module: "<client>"`) dan menu-nya didaftarkan bersamaan; demo extension-only di `web-extension-client-a` + `web-extension-template` (`GUIDE Bab 4`, `ARCHITECTURE §7`).
 - **0.7.4** — §12.4: extension yang meng-override route module opsional wajib guard `routes.has` (lewati + warn) atau pastikan module aktif; config dev memakai base `public/config.json` (env menimpa per-field).
 - **0.7.3** — Dev env-driven: script generik `dev`/`build` membaca symlink `current-client` (atau `VITE_CLIENT` dari `.env`); `/config.json` dev digenerate dev server dari env (mapping sama dengan production, termasuk `VITE_CONFIG_JSON`); script per-client dihapus; §14.1 diperbarui.
 - **0.7.2** — Struktur repo: extension default `web-extension-base` → `web-extension-default` (package `@arsi/extension-default`); repo client `arsi-web-client-<x>` (checkout `web-extension-client-<x>`, client id `client-<x>`); `web-extension-template` menjadi bagian repo base; script `npm run link:base` untuk base. Aturan §1.6/§15 diperbarui.

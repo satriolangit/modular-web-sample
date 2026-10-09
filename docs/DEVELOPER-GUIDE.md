@@ -715,7 +715,7 @@ overrideIfPresent(deps, '/users/:id', {
 });
 ```
 
-Guard **wajib** untuk route milik modul yang bisa dinonaktifkan (`CONTRACT §12.4`). Tanpa guard, mematikan modul lewat `config.modules` membuat boot gagal dengan `[routes] cannot override unknown route`. Urutan init menolong: extension selalu init **setelah** semua modul, jadi hasil `routes.has` sudah final. Extension juga boleh menambah route baru dengan `deps.routes.add` — sertakan `meta.module`.
+Guard **wajib** untuk route milik modul yang bisa dinonaktifkan (`CONTRACT §12.4`). Tanpa guard, mematikan modul lewat `config.modules` membuat boot gagal dengan `[routes] cannot override unknown route`. Urutan init menolong: extension selalu init **setelah** semua modul, jadi hasil `routes.has` sudah final. Extension juga boleh menambah route baru dengan `deps.routes.add` — sertakan `meta.module`; polanya di **Langkah 4**.
 
 ### Langkah 3 — Level 3: service wrapper
 
@@ -743,7 +743,32 @@ const service = useMemo(() => {
 
 Contoh hidup: `web-extension-client-a/src/hooks/useClientASample.ts`. Aturan lengkap: `CONTRACT §4`.
 
-### Langkah 4 — i18n dan event
+### Langkah 4 — Fitur baru khusus klien (route + menu)
+
+Dipakai saat kebutuhan klien tidak ada padanannya di base: halaman dan menu yang tidak menempel ke module mana pun. Dua registrasi, keduanya di `init(deps)` — contoh dari `web-extension-client-a/src/index.tsx:79-91`:
+
+```tsx
+deps.routes.add({
+  path: '/client-a/reports',
+  element: <ClientAReportsPage />,
+  meta: { group: 'client-a', module: 'client-a' },
+});
+
+deps.menu.register({
+  path: '/client-a/reports',
+  label: 'menu.reports',
+  namespace: 'client-a',
+  order: 90,
+});
+```
+
+- Namespace fitur = id klien: path `/<client>/...`, `meta: { group: '<client>', module: '<client>' }`, dan bundle i18n ber-namespace `<client>` (label `menu.reports` ada di `i18n/{en,id}.json` client-a).
+- `web-extension-template` sudah menyertakan sample serupa yang menurunkan id klien dari `deps.config.client` saat runtime (`src/index.tsx:18-36`, path `/<client>/sample`) — tanpa edit manual. Hapus blok itu bila tidak dipakai.
+- ⚠️ Daftarkan route **dan** menu bersamaan: Sidebar merender semua item dari `menu.getAll()` tanpa filter (`web-container/src/layout/Sidebar.tsx:16,33-37`), jadi menu tanpa route (atau sebaliknya) membingungkan pengguna. Path route **wajib** unik — duplikat melempar error di registry.
+- ✅ Checkpoint: buka `/<client>/...` — menu muncul di Sidebar dan halaman ter-render.
+- 📖 Konsep dan posisinya di antara tiga level override → `ARCHITECTURE §7`; aturan route → `CONTRACT §12.4`.
+
+### Langkah 5 — i18n dan event
 
 Dua penyesuaian yang hampir selalu dipakai:
 
@@ -770,7 +795,7 @@ Arah event yang diizinkan (`CONTRACT §13`):
 | Extension emit → modul listen | ✗ (base tidak boleh tahu extension) |
 | Extension emit → extension listen | ✓ (namespace `<client>.<entity>.<action>`) |
 
-### Langkah 5 — Test extension
+### Langkah 6 — Test extension
 
 Test untuk override **wajib** ada. Pola di `web-extension-client-a/src/__tests__/init.test.ts`: `createFakeDeps()` + `vi.resetModules()` + dynamic import, lalu periksa pemanggilan registry:
 
@@ -791,7 +816,7 @@ npm run typecheck && npm test && npm run lint
 
 Saat extension pertama kali mengimpor sebuah modul, tambahkan alias `@arsi/module-<folder>` di `aliases.cjs` + `tsconfig.json` extension (lihat `web-extension-client-a/aliases.cjs`).
 
-### Langkah 6 — Lihat override di dev
+### Langkah 7 — Lihat override di dev
 
 ```bash
 cd web-container
