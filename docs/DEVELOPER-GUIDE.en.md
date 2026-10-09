@@ -649,7 +649,8 @@ web-extension-client-a/
     ├── components/           # client-specific components
     ├── overrides/<module>/   # replacement pages
     ├── hooks/                # service wrappers
-    └── i18n/{en,id}.json     # the client-a namespace
+    ├── i18n/{en,id}.json     # the client-a namespace
+    └── pages/                # client-specific pages
 ```
 
 `manifest.json` holds `client`, `baseVersion` (exact), `modules`, `shared`, and `overrides`:
@@ -763,7 +764,7 @@ deps.menu.register({
 ```
 
 - The feature namespace is the client id: path `/<client>/...`, `meta: { group: '<client>', module: '<client>' }`, and an i18n bundle under the `<client>` namespace (the `menu.reports` label lives in client-a's `i18n/{en,id}.json`).
-- `web-extension-template` already ships a similar sample that derives the client id from `deps.config.client` at runtime (`src/index.tsx:18-36`, path `/<client>/sample`) — no manual edits. Delete that block if unused.
+- `web-extension-template` already ships a similar sample that derives the client id from `deps.config.client` at runtime (`src/index.tsx:17-36`, path `/<client>/sample`) — no manual edits. Delete that block if unused.
 - ⚠️ Register the route **and** the menu together: the Sidebar renders every item from `menu.getAll()` without filtering (`web-container/src/layout/Sidebar.tsx:16,33-37`), so a menu without a route (or vice versa) confuses users. Route paths **must** be unique — a duplicate throws in the registry.
 - ✅ Checkpoint: open `/<client>/...` — the menu appears in the Sidebar and the page renders.
 - 📖 Concepts and how it sits beside the three override levels → `ARCHITECTURE §7`; route rules → `CONTRACT §12.4`.

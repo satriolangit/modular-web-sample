@@ -114,6 +114,7 @@ describe('client-a extension init', () => {
     expect(routes.add).toHaveBeenCalledWith(
       expect.objectContaining({
         path: '/client-a/reports',
+        element: expect.anything(),
         meta: { group: 'client-a', module: 'client-a' },
       }),
     );

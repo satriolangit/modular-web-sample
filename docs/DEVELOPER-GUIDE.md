@@ -649,7 +649,8 @@ web-extension-client-a/
     ├── components/           # komponen khusus klien
     ├── overrides/<module>/   # halaman pengganti
     ├── hooks/                # wrapper service
-    └── i18n/{en,id}.json     # namespace client-a
+    ├── i18n/{en,id}.json     # namespace client-a
+    └── pages/                # halaman khusus klien
 ```
 
 `manifest.json` memuat `client`, `baseVersion` (exact), `modules`, `shared`, dan `overrides`:
@@ -763,7 +764,7 @@ deps.menu.register({
 ```
 
 - Namespace fitur = id klien: path `/<client>/...`, `meta: { group: '<client>', module: '<client>' }`, dan bundle i18n ber-namespace `<client>` (label `menu.reports` ada di `i18n/{en,id}.json` client-a).
-- `web-extension-template` sudah menyertakan sample serupa yang menurunkan id klien dari `deps.config.client` saat runtime (`src/index.tsx:18-36`, path `/<client>/sample`) — tanpa edit manual. Hapus blok itu bila tidak dipakai.
+- `web-extension-template` sudah menyertakan sample serupa yang menurunkan id klien dari `deps.config.client` saat runtime (`src/index.tsx:17-36`, path `/<client>/sample`) — tanpa edit manual. Hapus blok itu bila tidak dipakai.
 - ⚠️ Daftarkan route **dan** menu bersamaan: Sidebar merender semua item dari `menu.getAll()` tanpa filter (`web-container/src/layout/Sidebar.tsx:16,33-37`), jadi menu tanpa route (atau sebaliknya) membingungkan pengguna. Path route **wajib** unik — duplikat melempar error di registry.
 - ✅ Checkpoint: buka `/<client>/...` — menu muncul di Sidebar dan halaman ter-render.
 - 📖 Konsep dan posisinya di antara tiga level override → `ARCHITECTURE §7`; aturan route → `CONTRACT §12.4`.
