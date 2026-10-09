@@ -84,7 +84,7 @@ mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <repo-arsi-web-base> arsi-web-base
 cd arsi-web-base
 git clone <repo-arsi-web-client-a> web-extension-client-a
-echo "web-extension-*/" >> .git/info/exclude   # clone extension tidak ikut ter-commit ke base
+echo "web-extension-client-*/" >> .git/info/exclude   # clone extension client tidak ikut ter-commit ke base
 ```
 
 Extension harus berada **di dalam** folder base karena dua kontrak path dihitung relatif dari sana: symlink `web-container/current-client -> ../web-extension-client-a`, dan alias extension (`../web-container`, `../web-modules`).
@@ -876,7 +876,7 @@ git push -u origin main
 ```
 
 5. Pastikan folder klien tidak bocor ke repo base:
-   - `.git/info/exclude` repo base memuat `web-extension-*/` (dibuat di `GUIDE §0`).
+   - `.git/info/exclude` repo base memuat `web-extension-client-*/` (dibuat di `GUIDE §0`) — pola ini hanya menyasar folder klien, sehingga file **baru** di `web-extension-template/`/`web-extension-default/` tetap terlihat di `git status`.
    - Verifikasi: `cd ..` lalu `git status` harus **clean**, dan `git check-ignore -v web-extension-client-<x>/` menunjuk `.git/info/exclude`.
    - Ignore hanya berlaku untuk file **untracked**; kalau terlanjur ter-`git add`, keluarkan dengan `git rm -r --cached web-extension-client-<x>`. Jangan pakai `git add -f`.
    - `web-extension-default/` dan `web-extension-template/` sengaja tetap tracked di repo base.

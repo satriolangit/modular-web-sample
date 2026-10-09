@@ -84,7 +84,7 @@ mkdir -p ~/works/arsi && cd ~/works/arsi
 git clone <repo-arsi-web-base> arsi-web-base
 cd arsi-web-base
 git clone <repo-arsi-web-client-a> web-extension-client-a
-echo "web-extension-*/" >> .git/info/exclude   # keep the extension clone out of the base repo
+echo "web-extension-client-*/" >> .git/info/exclude   # keep client extension clones out of the base repo
 ```
 
 The extension must live **inside** the base folder because two path contracts resolve from there: the symlink `web-container/current-client -> ../web-extension-client-a`, and the extension aliases (`../web-container`, `../web-modules`).
@@ -876,7 +876,7 @@ git push -u origin main
 ```
 
 5. Make sure the client folder does not leak into the base repo:
-   - The base repo's `.git/info/exclude` contains `web-extension-*/` (created in `GUIDE §0`).
+   - The base repo's `.git/info/exclude` contains `web-extension-client-*/` (created in `GUIDE §0`) — the pattern targets client folders only, so **new** files under `web-extension-template/`/`web-extension-default/` stay visible in `git status`.
    - Verify: `cd ..` then `git status` must be **clean**, and `git check-ignore -v web-extension-client-<x>/` must point at `.git/info/exclude`.
    - The ignore only applies to **untracked** files; if it was already `git add`ed, remove it with `git rm -r --cached web-extension-client-<x>`. Never use `git add -f`.
    - `web-extension-default/` and `web-extension-template/` are intentionally kept tracked in the base repo.
