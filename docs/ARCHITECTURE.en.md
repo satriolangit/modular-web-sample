@@ -35,7 +35,7 @@ Jargon: *dependency injection* (DI) means the container prepares a single object
 - Backend microservices are reached via **path-based routing** (`/api/<service>`), e.g. the `auth` service at `/api/auth` (`web-container/src/di/deps.ts:45`).
 - Per-client deployment: the base is built once as a base image, then each client builds a client image `FROM` that base image (see `DEPLOYMENT-GUIDE` §1).
 
-**A quick example.** The `module-sample` module registers its own pages, menu, service, and modal via `init(deps)` (`web-modules/modules/module-sample/index.tsx:14`). The `client-a` extension never touches that module; it fills the `module-sample.overviewPanel` slot and overrides the `/module-sample/extension-points` route (`web-extension-client-a/src/index.tsx:32`). This pattern repeats throughout the document: **the base provides extension points, the client plugs in**.
+**A quick example.** The `module-sample` module registers its own pages, menu, service, and modal via `init(deps)` (`web-modules/modules/module-sample/index.tsx:14`). The `client-a` extension never touches that module; it fills the `module-sample.overviewPanel` slot and overrides the `/module-sample/extension-points` route (`web-extension-client-a/src/index.tsx:33`). This pattern repeats throughout the document: **the base provides extension points, the client plugs in**.
 
 ### 1.1 Without Modular vs With Modular
 
@@ -131,7 +131,7 @@ Think of the platform as a **building**:
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | **Container** | The React application that boots, provides config, DI, auth, routing host, layout, and every registry. Only its public API (`@arsi/container`) may be used by modules/extensions. | `web-container/src/di/deps.ts:23`                |
 | **Module**    | A self-contained business feature package that registers menu, routes, services, modals, and i18n via `init(deps)`; its contract is `public.ts`. Selected per client via `config.modules`. | `web-modules/modules/module-sample/index.tsx:14` |
-| **Extension** | A per-client customization package that also has `init(deps)`; it fills slots, overrides routes, and adds services/i18n. It is never imported by the base.                  | `web-extension-client-a/src/index.tsx:32`        |
+| **Extension** | A per-client customization package that also has `init(deps)`; it fills slots, overrides routes, and adds services/i18n. It is never imported by the base.                  | `web-extension-client-a/src/index.tsx:33`        |
 
 ### 3.3 Block Diagram
 
@@ -173,7 +173,7 @@ The order matters: config is read first, `deps` is created **once**, all `init` 
 | The app entry point and boot           | `web-container/src/main.tsx:11`                   |
 | The `deps` contract (13 services)      | `web-container/src/di/deps.ts:23`                 |
 | A complete example module              | `web-modules/modules/module-sample/index.tsx:14`  |
-| An example client extension            | `web-extension-client-a/src/index.tsx:32`         |
+| An example client extension            | `web-extension-client-a/src/index.tsx:33`         |
 
 ### 3.6 One Real Flow
 
@@ -287,10 +287,10 @@ const Panel = useSlot<{ label?: string }>(sampleSlots.overviewPanel);
 
 `useSlot` only reads the registry (`web-container/src/hooks/useSlot.ts:5`; exported from `web-container/src/public/index.ts:16`). When nothing has filled the slot yet, it returns `undefined` and the module renders its own fallback (`SampleExtensionPage.tsx:49`).
 
-**3. The extension fills the slot** via `deps.slots.register(name, component)` — e.g. `AuditButton` for `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:62`) and `ClientASamplePanel` for `sampleSlots.overviewPanel` (`:70`):
+**3. The extension fills the slot** via `deps.slots.register(name, component)` — e.g. `AuditButton` for `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:63`) and `ClientASamplePanel` for `sampleSlots.overviewPanel` (`:71`):
 
 ```tsx
-// web-extension-client-a/src/index.tsx:70
+// web-extension-client-a/src/index.tsx:71
 deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
 ```
 
@@ -316,7 +316,7 @@ deps.routes.add({
 Because the same extension may be installed for clients with a different subset of modules, it checks with `has(path)` first. The `overrideIfPresent` pattern in client-a:
 
 ```tsx
-// web-extension-client-a/src/index.tsx:25
+// web-extension-client-a/src/index.tsx:26
 if (!deps.routes.has(path)) {
   deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
   return;
@@ -331,7 +331,7 @@ The container builds the router from `getRoutes()` **after** discovery: module r
 **Dynamic routes & query strings.** The registry stores the path **as a string** (`web-container/src/routes/routeRegistry.ts:22-29`); at boot, the container maps every registered path to React Router by stripping the leading `/` and passing it to `createBrowserRouter` (`web-container/src/bootstrap/index.tsx:22-26`).
 
 - React Router v6 matches `:id` dynamic segments natively; static patterns beat dynamic ones. Pages read params via `useParams` — real example: `/users/:id` registered at `web-modules/modules/user-management/index.tsx:42` and read in `web-modules/modules/user-management/pages/UserDetailPage.tsx:12`.
-- `has`/`override` match the **exact string**: an extension overriding a dynamic route writes the same pattern (`'/users/:id'`, e.g. `web-extension-client-a/src/index.tsx:64`), never a concrete URL.
+- `has`/`override` match the **exact string**: an extension overriding a dynamic route writes the same pattern (`'/users/:id'`, e.g. `web-extension-client-a/src/index.tsx:65`), never a concrete URL.
 - Query strings (`/users?state=online`) are never part of registration or route matching. Pages read them with `useSearchParams`, then pass the values to services/React Query keys; there is no example in this sample yet.
 - Deploy: the nginx SPA fallback (`try_files $uri $uri/ /index.html`, `web-container/nginx.conf:18`) serves any deep link, and the browser preserves the query string.
 
@@ -356,7 +356,7 @@ deps.apiRegistry.register('module-sample', sampleClient);
 ```
 
 - A module's service name is not always the module name: follow `CONTRACT` §4.6 — `user-management` → `user`, `product-management` → `product`, `module-sample` → `module-sample`.
-- Extension convention: **client name prefix** — `<client>.<service>` — e.g. `deps.apiRegistry.register('client-a.audit', auditClient)` (`web-extension-client-a/src/index.tsx:60`). That makes it impossible for an extension service to collide with a base service.
+- Extension convention: **client name prefix** — `<client>.<service>` — e.g. `deps.apiRegistry.register('client-a.audit', auditClient)` (`web-extension-client-a/src/index.tsx:61`). That makes it impossible for an extension service to collide with a base service.
 - The core `auth` service is registered by the container (`web-container/src/di/deps.ts:45`).
 - Duplicate → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`); `get(name)` throws for an unknown name (`:22`); `has` is available for checks.
 - In components, the registry is read through `useApiRegistry` from `@arsi/container` (`web-container/src/public/index.ts:4`), for example `SampleExtensionPage.tsx:14`.
@@ -396,7 +396,7 @@ events.emit(userEvents.updated, { id: user.id, changes: input.changes });
 ```
 
 ```tsx
-// web-extension-client-a/src/index.tsx:78 — subscriber
+// web-extension-client-a/src/index.tsx:93 — subscriber
 deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
   void deps.queryClient.invalidateQueries({ queryKey: userKeys.detail(payload.id) });
 });
@@ -541,9 +541,9 @@ An extension customizes the app without touching container or module code. There
 
 | # | Level           | API                                                       | Nature                                                                    | Example in this repo                                                                           |
 | - | --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| 1 | Slot            | `deps.slots.register(name, component)`                    | Additive: only adds a component at an extension point the module provides | `AuditButton` fills `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:62`)   |
-| 2 | Route override  | `deps.routes.override(path, {element, meta})`             | Replaces the whole route entry                                            | `/users/:id` → `ClientAUserDetail` (`:64`)                                                     |
-| 3 | Service wrapper | `deps.apiRegistry.register('<client>.<service>', client)` | Adds a new client-namespaced service                                      | `client-a.audit` (`:60`)                                                                       |
+| 1 | Slot            | `deps.slots.register(name, component)`                    | Additive: only adds a component at an extension point the module provides | `AuditButton` fills `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:63`)   |
+| 2 | Route override  | `deps.routes.override(path, {element, meta})`             | Replaces the whole route entry                                            | `/users/:id` → `ClientAUserDetail` (`:65`)                                                     |
+| 3 | Service wrapper | `deps.apiRegistry.register('<client>.<service>', client)` | Adds a new client-namespaced service                                      | `client-a.audit` (`:61`)                                                                       |
 
 Jargon: **additive** means it can only add, never remove; **invasive** means it changes already-registered behavior.
 
@@ -562,7 +562,7 @@ Init order helps here: the extension always inits **after** every module (§4.1)
 The `overrideIfPresent` pattern in client-a:
 
 ```tsx
-// web-extension-client-a/src/index.tsx:20
+// web-extension-client-a/src/index.tsx:21
 function overrideIfPresent(
   deps: Deps,
   path: string,
@@ -576,7 +576,7 @@ function overrideIfPresent(
 }
 ```
 
-Its usage (`index.tsx:64`, `:73`) follows this shape:
+Its usage (`index.tsx:65`, `:74`) follows this shape:
 
 ```tsx
 overrideIfPresent(deps, '/users/:id', {

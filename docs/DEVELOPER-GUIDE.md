@@ -179,14 +179,14 @@ Polanya selalu sama: **mendaftar, bukan membangun**. Modul tidak membuat router,
 
 ### Langkah 3 — Baca extension: `web-extension-client-a/src/index.tsx`
 
-Extension punya bentuk yang sama (`init(deps)` di `:32`), tetapi isinya *penyesuaian* terhadap yang sudah ada:
+Extension punya bentuk yang sama (`init(deps)` di `:33`), tetapi isinya *penyesuaian* terhadap yang sudah ada:
 
-- `:38-54` — menambah/menimpa bundle i18n, termasuk label menu `user-management` menjadi "Pengguna Client A".
-- `:56-60` — mendaftarkan service khusus klien dengan prefix nama klien: `client-a.audit`.
-- `:62` — mengisi slot tabel user (`userSlots.userTableActions`) dengan tombol audit.
-- `:64-67` — meng-override route `/users/:id` — dengan guard `deps.routes.has` agar aman bila modulnya tidak aktif.
-- `:70` — mengisi slot `sampleSlots.overviewPanel` dengan `ClientASamplePanel`.
-- `:78-81` — bereaksi terhadap event `userEvents.updated`.
+- `:39-55` — menambah/menimpa bundle i18n, termasuk label menu `user-management` menjadi "Pengguna Client A".
+- `:57-61` — mendaftarkan service khusus klien dengan prefix nama klien: `client-a.audit`.
+- `:63` — mengisi slot tabel user (`userSlots.userTableActions`) dengan tombol audit.
+- `:65-68` — meng-override route `/users/:id` — dengan guard `deps.routes.has` agar aman bila modulnya tidak aktif.
+- `:71` — mengisi slot `sampleSlots.overviewPanel` dengan `ClientASamplePanel`.
+- `:93-96` — bereaksi terhadap event `userEvents.updated`.
 
 Perhatikan: extension selalu **memakai** yang sudah ada (route modul, slot modul, public API modul). Tidak ada satu pun baris di sini yang mengubah file modul.
 
@@ -197,7 +197,7 @@ Perhatikan: extension selalu **memakai** yang sudah ada (route modul, slot modul
 | Titik masuk aplikasi dan urutan boot | `web-container/src/main.tsx:11` |
 | Kontrak `deps` (13 layanan) | `web-container/src/di/deps.ts:23` |
 | Contoh modul lengkap | `web-modules/modules/module-sample/index.tsx:14` |
-| Contoh extension klien | `web-extension-client-a/src/index.tsx:32` |
+| Contoh extension klien | `web-extension-client-a/src/index.tsx:33` |
 
 ✅ **Checkpoint Bab 1**
 
@@ -238,11 +238,11 @@ Buka `web-extension-client-a/src/i18n/id.json` dan ubah judul panel:
 "panelTitle": "Panel Klien A",
 ```
 
-Ubah juga `en.json` (`"panelTitle": "Client A panel"`) agar paritas bahasa terjaga. Extension menambahkan terjemahan lewat `deps.i18n.addResourceBundle` (`src/index.tsx:38-39`) ke namespace `client-a`; komponen membacanya dengan `useTranslation('client-a')`.
+Ubah juga `en.json` (`"panelTitle": "Client A panel"`) agar paritas bahasa terjaga. Extension menambahkan terjemahan lewat `deps.i18n.addResourceBundle` (`src/index.tsx:39-40`) ke namespace `client-a`; komponen membacanya dengan `useTranslation('client-a')`.
 
 ### Langkah 3 — Ubah satu komponen slot
 
-Komponen `web-extension-client-a/src/components/ClientASamplePanel.tsx` dirender di slot `module-sample.overviewPanel` — didaftarkan extension di `src/index.tsx:70`, sedangkan nama slot dideklarasikan modul di `web-modules/modules/module-sample/slots.ts:2`.
+Komponen `web-extension-client-a/src/components/ClientASamplePanel.tsx` dirender di slot `module-sample.overviewPanel` — didaftarkan extension di `src/index.tsx:71`, sedangkan nama slot dideklarasikan modul di `web-modules/modules/module-sample/slots.ts:2`.
 
 Tambahkan satu baris di akhir `Card`:
 
@@ -676,7 +676,7 @@ Urutan usaha selalu dari yang paling ringan. Penjelasan tiap level beserta sifat
 
 ### Langkah 1 — Level 1: isi slot
 
-Modul mendeklarasikan slot di `slots.ts` dan mengekspornya di `public.ts` (contoh: `sampleSlots.overviewPanel`). Extension mengisinya di `init` (`src/index.tsx:70`):
+Modul mendeklarasikan slot di `slots.ts` dan mengekspornya di `public.ts` (contoh: `sampleSlots.overviewPanel`). Extension mengisinya di `init` (`src/index.tsx:71`):
 
 ```tsx
 import { sampleSlots } from '@arsi/module-module-sample';
@@ -690,7 +690,7 @@ deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
 
 ### Langkah 2 — Level 2: route override dengan guard
 
-`override` mengganti **seluruh entry** route (sertakan `meta` lagi) dan melempar error bila path belum terdaftar. Karena itu `client-a` memakai helper `overrideIfPresent` (`src/index.tsx:20-30`):
+`override` mengganti **seluruh entry** route (sertakan `meta` lagi) dan melempar error bila path belum terdaftar. Karena itu `client-a` memakai helper `overrideIfPresent` (`src/index.tsx:21-31`):
 
 ```tsx
 function overrideIfPresent(
@@ -719,7 +719,7 @@ Guard **wajib** untuk route milik modul yang bisa dinonaktifkan (`CONTRACT §12.
 
 ### Langkah 3 — Level 3: service wrapper
 
-Extension **tidak boleh** meng-override service core (`auth`, `user`). Pola yang benar: daftarkan service baru ber-namespace `<client>.<service>` (`src/index.tsx:56-60`):
+Extension **tidak boleh** meng-override service core (`auth`, `user`). Pola yang benar: daftarkan service baru ber-namespace `<client>.<service>` (`src/index.tsx:57-61`):
 
 ```tsx
 const auditClient = axios.create({ baseURL: '/api/audit-client-a', timeout: 5000 });
@@ -785,7 +785,7 @@ deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
 });
 ```
 
-Keduanya berasal dari `src/index.tsx`: i18n di `:38-54`, event listener di `:78-81`.
+Keduanya berasal dari `src/index.tsx`: i18n di `:39-55`, event listener di `:93-96`.
 
 Arah event yang diizinkan (`CONTRACT §13`):
 

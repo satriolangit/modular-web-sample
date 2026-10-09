@@ -35,7 +35,7 @@ Jargon: *dependency injection* (DI) artinya container menyediakan satu objek ber
 - Backend microservice diakses lewat **path-based routing** (`/api/<service>`), mis. service `auth` di `/api/auth` (`web-container/src/di/deps.ts:45`).
 - Deploy per klien: base dibangun sekali menjadi image base, lalu tiap klien membangun image client `FROM` base image tersebut (lihat `DEPLOYMENT-GUIDE` §1).
 
-**Contoh singkat.** Modul `module-sample` mendaftarkan halaman, menu, service, dan modalnya sendiri lewat `init(deps)` (`web-modules/modules/module-sample/index.tsx:14`). Extension `client-a` tidak menyentuh modul itu; ia mengisi slot `module-sample.overviewPanel` dan meng-override route `/module-sample/extension-points` (`web-extension-client-a/src/index.tsx:32`). Pola ini berulang di seluruh dokumen: **base menyediakan titik sambung, klien menyambung**.
+**Contoh singkat.** Modul `module-sample` mendaftarkan halaman, menu, service, dan modalnya sendiri lewat `init(deps)` (`web-modules/modules/module-sample/index.tsx:14`). Extension `client-a` tidak menyentuh modul itu; ia mengisi slot `module-sample.overviewPanel` dan meng-override route `/module-sample/extension-points` (`web-extension-client-a/src/index.tsx:33`). Pola ini berulang di seluruh dokumen: **base menyediakan titik sambung, klien menyambung**.
 
 ### 1.1 Tanpa Modular vs Dengan Modular
 
@@ -131,7 +131,7 @@ Bayangkan platform ini sebagai sebuah **gedung**:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | **Container** | Aplikasi React yang melakukan boot, menyediakan config, DI, auth, routing host, layout, dan semua registry. Hanya public API-nya (`@arsi/container`) yang boleh dipakai modul/extension. | `web-container/src/di/deps.ts:23`                |
 | **Module**    | Paket fitur bisnis mandiri yang mendaftarkan menu, route, service, modal, dan i18n lewat `init(deps)`; kontraknya `public.ts`. Dipilih per klien lewat `config.modules`. | `web-modules/modules/module-sample/index.tsx:14` |
-| **Extension** | Paket customization per klien yang juga punya `init(deps)`; mengisi slot, meng-override route, dan menambah service/i18n. Tidak pernah di-import oleh base.               | `web-extension-client-a/src/index.tsx:32`        |
+| **Extension** | Paket customization per klien yang juga punya `init(deps)`; mengisi slot, meng-override route, dan menambah service/i18n. Tidak pernah di-import oleh base.               | `web-extension-client-a/src/index.tsx:33`        |
 
 ### 3.3 Diagram Blok
 
@@ -173,7 +173,7 @@ Urutannya penting: config dibaca dulu, `deps` dibuat **sekali**, semua `init` se
 | Titik masuk aplikasi dan boot | `web-container/src/main.tsx:11`                  |
 | Kontrak `deps` (13 layanan)   | `web-container/src/di/deps.ts:23`                |
 | Contoh modul lengkap          | `web-modules/modules/module-sample/index.tsx:14` |
-| Contoh extension klien        | `web-extension-client-a/src/index.tsx:32`        |
+| Contoh extension klien        | `web-extension-client-a/src/index.tsx:33`        |
 
 ### 3.6 Satu Alur Nyata
 
@@ -287,10 +287,10 @@ const Panel = useSlot<{ label?: string }>(sampleSlots.overviewPanel);
 
 `useSlot` hanya membaca registry (`web-container/src/hooks/useSlot.ts:5`; diekspor di `web-container/src/public/index.ts:16`). Bila belum ada yang mengisi, hasilnya `undefined` dan modul merender fallback miliknya (`SampleExtensionPage.tsx:49`).
 
-**3. Extension mengisi slot** lewat `deps.slots.register(name, component)` — mis. `AuditButton` untuk `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:62`) dan `ClientASamplePanel` untuk `sampleSlots.overviewPanel` (`:70`):
+**3. Extension mengisi slot** lewat `deps.slots.register(name, component)` — mis. `AuditButton` untuk `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:63`) dan `ClientASamplePanel` untuk `sampleSlots.overviewPanel` (`:71`):
 
 ```tsx
-// web-extension-client-a/src/index.tsx:70
+// web-extension-client-a/src/index.tsx:71
 deps.slots.register(sampleSlots.overviewPanel, ClientASamplePanel);
 ```
 
@@ -316,7 +316,7 @@ deps.routes.add({
 Karena extension yang sama bisa dipasang pada klien dengan subset modul berbeda, extension memeriksa dulu dengan `has(path)`. Pola `overrideIfPresent` di client-a:
 
 ```tsx
-// web-extension-client-a/src/index.tsx:25
+// web-extension-client-a/src/index.tsx:26
 if (!deps.routes.has(path)) {
   deps.logger.warn(`[client-a] route "${path}" belum terdaftar; override dilewati`);
   return;
@@ -331,7 +331,7 @@ Container menyusun router dari `getRoutes()` **setelah** discovery: route modul 
 **Route dinamis & query string.** Registry menyimpan path **sebagai string** (`web-container/src/routes/routeRegistry.ts:22-29`); saat boot, container memetakan setiap path ke React Router dengan melepas leading `/` lalu meneruskannya ke `createBrowserRouter` (`web-container/src/bootstrap/index.tsx:22-26`).
 
 - React Router v6 mencocokkan segmen dinamis `:id` secara bawaan; pola statis menang atas pola dinamis. Halaman membaca param lewat `useParams` — contoh nyata: `/users/:id` didaftarkan di `web-modules/modules/user-management/index.tsx:42` dan dibaca di `web-modules/modules/user-management/pages/UserDetailPage.tsx:12`.
-- `has`/`override` mencocokkan **string persis**: extension yang mengganti route dinamis menulis pola yang sama (`'/users/:id'`, mis. `web-extension-client-a/src/index.tsx:64`), bukan URL konkret.
+- `has`/`override` mencocokkan **string persis**: extension yang mengganti route dinamis menulis pola yang sama (`'/users/:id'`, mis. `web-extension-client-a/src/index.tsx:65`), bukan URL konkret.
 - Query string (`/users?state=online`) tidak pernah bagian dari registrasi atau pencocokan route. Halaman membacanya lewat `useSearchParams`, lalu nilainya diteruskan ke service/query key React Query; belum ada contohnya di sample ini.
 - Deploy: fallback SPA nginx (`try_files $uri $uri/ /index.html`, `web-container/nginx.conf:18`) melayani deep link mana pun, dan query string dipertahankan browser.
 
@@ -356,7 +356,7 @@ deps.apiRegistry.register('module-sample', sampleClient);
 ```
 
 - Nama service modul tidak selalu sama dengan nama modul: ikuti `CONTRACT` §4.6 — `user-management` → `user`, `product-management` → `product`, `module-sample` → `module-sample`.
-- Konvensi extension: **prefix nama klien** — `<client>.<service>` — mis. `deps.apiRegistry.register('client-a.audit', auditClient)` (`web-extension-client-a/src/index.tsx:60`). Dengan begitu service extension tidak mungkin bentrok dengan service base.
+- Konvensi extension: **prefix nama klien** — `<client>.<service>` — mis. `deps.apiRegistry.register('client-a.audit', auditClient)` (`web-extension-client-a/src/index.tsx:61`). Dengan begitu service extension tidak mungkin bentrok dengan service base.
 - Service core `auth` sudah didaftarkan container (`web-container/src/di/deps.ts:45`).
 - Duplikat → error `[apiRegistry] service "..." is already registered` (`web-container/src/api/apiRegistry.ts:15`); `get(name)` melempar bila nama tidak dikenal (`:22`); `has` tersedia untuk pengecekan.
 - Di komponen, registry dibaca lewat `useApiRegistry` dari `@arsi/container` (`web-container/src/public/index.ts:4`), contohnya `SampleExtensionPage.tsx:14`.
@@ -396,7 +396,7 @@ events.emit(userEvents.updated, { id: user.id, changes: input.changes });
 ```
 
 ```tsx
-// web-extension-client-a/src/index.tsx:78 — subscriber
+// web-extension-client-a/src/index.tsx:93 — subscriber
 deps.events.on<UserUpdatedPayload>(userEvents.updated, (payload) => {
   void deps.queryClient.invalidateQueries({ queryKey: userKeys.detail(payload.id) });
 });
@@ -541,9 +541,9 @@ Extension menyesuaikan aplikasi tanpa menyentuh kode container atau modul. Ada t
 
 | # | Level           | API                                                       | Sifat                                                                  | Contoh di repo ini                                                                             |
 | - | --------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| 1 | Slot            | `deps.slots.register(name, component)`                    | Aditif: hanya menambah komponen di titik sambung yang disediakan modul | `AuditButton` mengisi `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:62`) |
-| 2 | Route override  | `deps.routes.override(path, {element, meta})`             | Mengganti seluruh entry route                                          | `/users/:id` → `ClientAUserDetail` (`:64`)                                                     |
-| 3 | Service wrapper | `deps.apiRegistry.register('<client>.<service>', client)` | Menambah service baru ber-namespace klien                              | `client-a.audit` (`:60`)                                                                       |
+| 1 | Slot            | `deps.slots.register(name, component)`                    | Aditif: hanya menambah komponen di titik sambung yang disediakan modul | `AuditButton` mengisi `userSlots.userTableActions` (`web-extension-client-a/src/index.tsx:63`) |
+| 2 | Route override  | `deps.routes.override(path, {element, meta})`             | Mengganti seluruh entry route                                          | `/users/:id` → `ClientAUserDetail` (`:65`)                                                     |
+| 3 | Service wrapper | `deps.apiRegistry.register('<client>.<service>', client)` | Menambah service baru ber-namespace klien                              | `client-a.audit` (`:61`)                                                                       |
 
 Jargon: **aditif** berarti hanya bisa menambah dan tidak bisa menghapus; **invasif** berarti mengubah perilaku yang sudah terdaftar.
 
@@ -562,7 +562,7 @@ Urutan init menolong di sini: extension selalu init **setelah** semua modul (§4
 Contoh pola `overrideIfPresent` di client-a:
 
 ```tsx
-// web-extension-client-a/src/index.tsx:20
+// web-extension-client-a/src/index.tsx:21
 function overrideIfPresent(
   deps: Deps,
   path: string,
@@ -576,7 +576,7 @@ function overrideIfPresent(
 }
 ```
 
-Pemakaiannya (`index.tsx:64`, `:73`) mengikuti bentuk:
+Pemakaiannya (`index.tsx:65`, `:74`) mengikuti bentuk:
 
 ```tsx
 overrideIfPresent(deps, '/users/:id', {
